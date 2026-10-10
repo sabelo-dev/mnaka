@@ -22,6 +22,10 @@ public:
     bool signedIn() const { return !m_accessToken.isEmpty(); }
     QString email() const { return m_email; }
     QString userId() const { return m_userId; }
+    // For trusted C++ callers that attach the session to requests; never exposed to QML.
+    QString accessToken() const { return m_accessToken; }
+    QUrl projectUrl() const { return m_projectUrl; }
+    QString publishableKey() const { return m_key; }
     void signIn(const QString &email, const QString &password);
     void signUp(const QString &email, const QString &password);
     void signOut();

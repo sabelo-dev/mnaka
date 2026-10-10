@@ -11,7 +11,10 @@ ConversationEngine::ConversationEngine(ModelProvider *provider, QObject *parent)
     connect(m_provider, &ModelProvider::failed, this, [this](QUuid taskId, QString code) {
         if (!m_contexts.contains(taskId)) return;
         m_contexts.remove(taskId); m_requests.remove(taskId);
-        emit failed(taskId, code, code == "CANCELLED" ? "Planning cancelled." : "Model provider rejected input.");
+        emit failed(taskId, code, code == "CANCELLED" ? "Planning cancelled."
+            : code == "UNAUTHENTICATED" ? "Sign in to use the assistant."
+            : code == "PROVIDER_UNAVAILABLE" ? "The model endpoint is not available."
+            : "Model provider rejected input.");
     });
     connect(m_provider, &ModelProvider::completed, this, [this](QUuid taskId, QJsonObject result, QJsonObject usage) {
         if (!m_contexts.contains(taskId)) return;

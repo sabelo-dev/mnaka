@@ -298,3 +298,68 @@ nothing backs them. The orb is decorative and turns only while a task is active.
 All eleven CTest targets pass, including both headless QML runs with zero
 warnings. The layouts at 1680, 1100 and 420 px wide, a typed mock task and the
 approval panel were checked by screenshot in headless Chrome only.
+
+## Developer Workspace screen
+
+The Developer screen now has the concept's layout: a project tree, a tabbed panel
+(Diff, Build output, Tests), a task checklist, a review panel, a summary and a
+request bar. No project engine exists, so by default every panel is an empty state
+that says what is missing. The request bar is real: it submits through the same
+`WorkspaceModel.submit` path in Developer mode and shows the reply or notice.
+
+In the mock session only, the tree, diff, checklist, review and summary show a
+static sample defined in `Main.qml`, each panel tagged "SAMPLE DATA" with a notice
+that nothing was read from or written to any file. It is presentation content, not
+output of the orchestrator, broker or any tool. "Apply changes" is disabled, and the
+Build output and Tests tabs always state that nothing has run.
+
+## Account session: own model, saved data, no mock switch
+
+Signing in now starts a real session. This supersedes the statements above that
+sign-in is identity only, that the sample on the Developer screen needs the mock
+session, and that the mock session has a Settings switch.
+
+- **Assistant.** `adapters/supabase/GatewayModelProvider` is a `ModelProvider` that posts
+  the message to the project's `assistant` Edge Function with the user's token. The
+  function (`supabase/functions/assistant`) verifies the caller, adds the last 20
+  messages and the user's memories, calls the owner's own model over an
+  OpenAI-compatible `/chat/completions` endpoint, and stores the exchange. The endpoint,
+  model name and key are function secrets (`MNAKA_LLM_BASE_URL`, `MNAKA_LLM_MODEL`,
+  `MNAKA_LLM_API_KEY`) and never reach the client. The reply still goes through
+  `ConversationEngine`, plan validation, the orchestrator and the broker as a single
+  `demo.echo` step, which has no effects. Replies are not streamed.
+- **Saved data.** `supabase/migrations/20261011000001_account_data.sql` adds
+  `mnaka_messages`, `mnaka_memories`, `mnaka_skills` and `mnaka_rules` in `public`, each
+  row owned by one Auth user under row-level security. `adapters/supabase/SupabaseData`
+  reads and writes them through the Data API. Content is stored as plain text: this
+  deliberately sets aside the earlier rule against persisting content before the
+  encrypted content repository exists. Tasks and events are still session-only.
+- **Memory** (Projects screen): add and forget facts; they are sent with every message.
+- **Skills**: a manifest that passes local inspection can be saved and deleted. Saving
+  grants nothing and nothing is executed.
+- **Proactive**: rules can be saved, switched on or off and deleted. Nothing schedules
+  or runs them; the switch records a choice only.
+- **Vision**: "Interpret image" sends a JPEG copy, at most 1024 px, with a question to
+  the same function. The image is not stored. This needs a model that accepts images.
+- **Mock session**: removed from the application's screens. `--mock-session` and
+  `WorkspaceModel::setMockSession` remain for the automated tests.
+- **Developer screen**: the sample is now an explicit "Show sample" toggle.
+- Software Engineering and Computer Control are unchanged: they need the desktop
+  client, relay and sandbox, none of which exist.
+
+`Main.qml` is compiled to bytecode only (`QT_QMLCACHEGEN_ARGUMENTS --only-bytecode`):
+full C++ generation overflowed the MinGW object format and took over ten minutes for
+WebAssembly.
+
+Verified: twelve CTest targets pass, including `account_session_contract` against a
+loopback stand-in (sign-in, history load and order, a model task to `succeeded`, a 503
+failing the task, memory and rule round trips, history deletion, sign-out, and the
+bounded JPEG). The migration's ownership rules were checked on an in-process
+PostgreSQL. The function was run under Deno against a stand-in model. The browser
+build was driven through sign-in, chat and the new screens against the same stand-in.
+
+Deployed to the Supabase project on 2026-10-11: the account-data migration and the
+`assistant` function. Checked there: signed-out reads of the four tables are refused,
+and the function refuses a call without a session. Not checked anywhere real: a
+signed-in call, because no model secrets are set and no test account was created, and
+any actual model, including image input.

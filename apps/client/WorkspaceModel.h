@@ -4,6 +4,7 @@
 #include <QUrl>
 #include <QUuid>
 #include <QJsonObject>
+#include <QHash>
 #include <QtQml/qqmlregistration.h>
 #include <functional>
 #include <memory>
@@ -13,6 +14,9 @@ class TaskOrchestrator;
 class EngineRegistry;
 class TaskStore;
 class SupabaseAuth;
+class SupabaseData;
+class SessionToken;
+class ModelProvider;
 }
 
 class WorkspaceModel : public QObject {
@@ -38,7 +42,17 @@ class WorkspaceModel : public QObject {
     Q_PROPERTY(QString accountEmail READ accountEmail NOTIFY accountChanged)
     Q_PROPERTY(bool accountBusy READ accountBusy NOTIFY accountChanged)
     Q_PROPERTY(QString accountNotice READ accountNotice NOTIFY accountChanged)
-    // Opt-in fixture session: mock provider, fixture broker tools, nothing persisted.
+    // True while a signed-in account session runs against the project's own model.
+    Q_PROPERTY(bool connected READ connected NOTIFY changed)
+    // The signed-in user's saved rows. Saving a skill or rule records it; nothing executes it.
+    Q_PROPERTY(QVariantList memories READ memories NOTIFY dataChanged)
+    Q_PROPERTY(QVariantList skills READ skills NOTIFY dataChanged)
+    Q_PROPERTY(QVariantList rules READ rules NOTIFY dataChanged)
+    Q_PROPERTY(QString dataNotice READ dataNotice NOTIFY dataChanged)
+    Q_PROPERTY(bool skillSavable READ skillSavable NOTIFY skillReportChanged)
+    Q_PROPERTY(QString imageAnswer READ imageAnswer NOTIFY imageChanged)
+    Q_PROPERTY(bool imageInterpreting READ imageInterpreting NOTIFY imageChanged)
+    // Fixture session for automated tests and --mock-session; the application has no switch for it.: mock provider, fixture broker tools, nothing persisted.
     Q_PROPERTY(bool mockSession READ mockSession WRITE setMockSession NOTIFY changed)
 public:
     explicit WorkspaceModel(QObject *parent = nullptr);
@@ -61,10 +75,27 @@ public:
     QString accountEmail() const;
     bool accountBusy() const;
     QString accountNotice() const { return m_accountNotice; }
-    bool mockSession() const { return m_orchestrator != nullptr; }
+    bool connected() const { return m_live; }
+    QVariantList memories() const { return m_memories; }
+    QVariantList skills() const { return m_skills; }
+    QVariantList rules() const { return m_rules; }
+    QString dataNotice() const { return m_dataNotice; }
+    bool skillSavable() const { return m_live && !m_validManifest.isEmpty(); }
+    QString imageAnswer() const { return m_imageAnswer; }
+    bool imageInterpreting() const { return m_imageInterpreting; }
+    bool mockSession() const { return m_mock; }
     void setMockSession(bool enabled);
     Q_INVOKABLE void inspectSkill(QString manifest);
-    Q_INVOKABLE void clearSkillReport() { m_skillReport.clear(); emit skillReportChanged(); }
+    Q_INVOKABLE void clearSkillReport() { m_skillReport.clear(); m_validManifest = QJsonObject(); emit skillReportChanged(); }
+    Q_INVOKABLE void saveSkill();
+    Q_INVOKABLE void deleteSkill(QString id);
+    Q_INVOKABLE void addMemory(QString text);
+    Q_INVOKABLE void deleteMemory(QString id);
+    Q_INVOKABLE void addRule(QString title, QString schedule);
+    Q_INVOKABLE void setRuleEnabled(QString id, bool enabled);
+    Q_INVOKABLE void deleteRule(QString id);
+    // Sends the selected image and question to the model. The image leaves this device.
+    Q_INVOKABLE void interpretImage(QString question);
     Q_INVOKABLE void selectImage(QUrl file);
     Q_INVOKABLE void pickImage();
     Q_INVOKABLE void clearImage();
@@ -85,7 +116,14 @@ signals:
     void imageChanged();
     void skillReportChanged();
     void accountChanged();
+    void dataChanged();
 private:
+    void syncAccount();
+    void loadAccountData();
+    void startRuntime(mnaka::ModelProvider *provider, const QString &assistantStatus, const QHash<QString, QString> &engineStatus);
+    void stopRuntime();
+    void removeRow(const QString &table, const QString &id, QVariantList &rows);
+    void failData(const QString &what);
     void loadImage(std::function<QByteArray()> read);
     void refresh();
     void settle(const QUuid &taskId);
@@ -94,6 +132,13 @@ private:
     QString m_skillReport;
     mnaka::SupabaseAuth *m_auth = nullptr;
     QString m_accountNotice;
+    mnaka::SupabaseData *m_data = nullptr;
+    std::shared_ptr<mnaka::SessionToken> m_token;
+    bool m_mock = false, m_live = false, m_imageInterpreting = false;
+    quint64 m_sessionGeneration = 0;
+    QVariantList m_memories, m_skills, m_rules;
+    QString m_dataNotice, m_imageAnswer;
+    QJsonObject m_validManifest;
     bool m_imageLoading = false;
     quint64 m_imageGeneration = 0;
     // Engine, broker and store handles stay on this side of the QML boundary.

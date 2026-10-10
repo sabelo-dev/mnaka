@@ -3,14 +3,17 @@
 The browser client is the same `mnaka_client` QML application compiled with Qt for
 WebAssembly. It has the foundation's limits: no provider and no persistence. The
 mock session is the only thing that runs tasks. Its only network calls are account
-sign-in to Supabase Auth, and only when the bundle is staged with a project URL and
-publishable key. Hosting it publishes static files; it does not add a backend.
+to the configured Supabase project, and only when the bundle is staged with a project
+URL and publishable key: sign-in, the signed-in user's saved data, and messages to the
+`assistant` function. Hosting it publishes static files; the backend is Supabase.
 
 | Part | Where | State |
 | --- | --- | --- |
 | Browser client (static files) | AWS S3 behind CloudFront | Built and run locally; never deployed from this repository |
 | Relay database | Supabase PostgreSQL 17 | Supabase CLI migrations written and checked locally; not pushed to the project |
-| Identity | Supabase Auth | Email sign-in in the client; nothing verifies or uses the session yet |
+| Identity | Supabase Auth | Email sign-in in the client |
+| Assistant | Supabase Edge Function `assistant` | Deployed; needs the model secrets below before it answers |
+| Saved data | Supabase tables `mnaka_*` | Deployed; per-user row-level security |
 | Relay service | AWS (planned) | Not implemented; `MNAKA_BUILD_RELAY` still fails at configure |
 
 The browser never connects to PostgreSQL. `mnaka_storage_pg` and `mnaka_migrate`
@@ -124,6 +127,32 @@ In the Supabase dashboard, set Authentication > URL Configuration > Site URL to 
 deployed site so confirmation emails link back to it. The project currently has
 email sign-in on, sign-up open and email confirmation required.
 
+### Assistant and saved data
+
+The `assistant` function forwards a signed-in user's message to your own model. The
+model must speak the OpenAI-compatible chat completions API (Ollama, vLLM, llama.cpp
+server, LM Studio and most hosted gateways do) and must be reachable from Supabase over
+HTTPS: a model on `localhost` or a private network is not. Set its details as secrets:
+
+```powershell
+npx supabase secrets set MNAKA_LLM_BASE_URL=https://<your-model-host>/v1 MNAKA_LLM_MODEL=<model-name>
+npx supabase secrets set MNAKA_LLM_API_KEY=<key>   # only if your endpoint needs one
+```
+
+Until they are set the function answers `PROVIDER_UNAVAILABLE` and the client shows the
+task as failed. Image interpretation also needs a model that accepts image input.
+
+To redeploy after changing the function or adding a migration:
+
+```powershell
+npx supabase functions deploy assistant --use-api
+npx supabase db push
+```
+
+`mnaka_messages`, `mnaka_memories`, `mnaka_skills` and `mnaka_rules` live in `public` and
+are reached through the Data API with the user's token. Each row belongs to one user;
+signed-out visitors have no access. Content is plain text.
+
 ### Relay database
 
 `supabase/` is a Supabase CLI project for the relay database, not the desktop one.
@@ -172,8 +201,10 @@ after the first push.
 
 ## Open
 
-- The relay that verifies Supabase tokens. Until it exists a session unlocks nothing.
 - Password reset, and keeping a session across reloads.
+- Streaming replies, per-user rate limits and a spending cap on the `assistant` function.
+  Any signed-up user can currently send messages to your model.
+- Executing saved skills and scheduling saved rules.
 - The account-per-user trigger and the `relay.auth_subject` lookup policy are a proposal
   made for Supabase; the relay design has not confirmed them. Deleting an Auth user
   leaves its relay account in place.

@@ -70,10 +70,21 @@ keeps the SQL byte-exact.
 user's email and password to its Auth endpoint over HTTPS and nowhere else; the
 URL must be an https origin, redirects are not followed, and secret or
 service-role keys are refused. Tokens stay in C++ memory and never reach QML or
-storage. Server error text is bounded and shown as plain text. A session grants
-no authority: no engine, tool or store consults it, and nothing server-side
-verifies it yet. The publishable key and project URL are public; what they
-permit is decided by the Supabase project's own settings and policies.
+storage. Server error text is bounded and shown as plain text. The publishable
+key and project URL are public; what they permit is decided by the Supabase
+project's own settings and policies.
+
+**Account session and own model.** A signed-in session sends the user's messages,
+and an image only when the user chooses Interpret, to the project's `assistant`
+function, which checks the token, then calls the owner's model with a server-held
+endpoint and key. Model output is untrusted: it is displayed as plain text and maps
+to one effect-free step; it cannot name tools or grant itself authority. Saved
+conversations, memories, skill manifests and rules are plain text in the project
+database, readable by the owning user under row-level security and by anyone with
+the project's service role or database access. Sign-up is open, so anyone who
+creates an account can spend the owner's model capacity: there is no rate limit or
+budget yet. A saved skill or rule is inert data. The model endpoint sees message
+content; a remembered fact is sent with every message.
 
 **Hosted browser client.** The WebAssembly build is static files. The only
 configuration it carries is the public Supabase URL and publishable key, and its
@@ -90,7 +101,8 @@ session history.
 
 ## Open
 
-- Sign-in exists but no session verification; the mock session identity is random and unrelated to the account.
+- No rate limit or budget on the assistant function; no encryption of saved content.
+- The broker identity is local to a run; account identity is enforced only server-side by the user's token.
 - No persistence, so interrupted-task recovery and replay are session-only.
 - Transactional approval/tool-effect ordering (section 23) is not built.
 - No sandbox, process isolation or control adapters.

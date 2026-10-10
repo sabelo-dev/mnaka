@@ -9,3 +9,8 @@ schemas = ["public", "graphql_public"]
 [db]
 # mnaka's storage code requires PostgreSQL 17.
 major_version = 17
+
+[functions.assistant]
+# The function checks the caller's token itself (auth.getUser), which also works with
+# projects that use the newer signing keys.
+verify_jwt = false

@@ -42,3 +42,14 @@ one trusted fixture resource. Neither touches the filesystem, processes or netwo
 Provider adapters, PTT, project indexing and patches, sandboxing, control
 adapters, skill installation, persistent memory, scheduling, relay/pairing and
 all PostgreSQL-backed persistence. See `implementation-status.md`.
+
+## With a signed-in account
+
+The table above describes the signed-out application. Signed in, the assistant
+engine is enabled and answers through the project's `assistant` function using the
+owner's own model. Memory, saved skill manifests, saved proactive rules and image
+interpretation are available as account features, not engines: their registry
+entries stay disabled and say what they do ("Saved to account", "Saved, not
+executed", "Saved, not scheduled", "Via your model"). Software Engineering and
+Computer Control report "Needs desktop app". `capabilities.json` still describes the
+signed-out state only.
