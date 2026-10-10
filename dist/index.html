@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <!-- 1:1 mapping between CSS pixels and Qt device independent pixels. -->
+    <meta name="viewport" content="width=device-width, height=device-height, user-scalable=0">
+    <meta name="color-scheme" content="dark">
+    <meta name="theme-color" content="#0c101b">
+    <title>MNAKA · AI workspace</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="mnaka-shell.css">
+  </head>
+  <body>
+    <main id="shell">
+      <h1>M N A K A</h1>
+      <p id="status" role="status">Loading…</p>
+      <noscript>MNAKA needs JavaScript and WebAssembly.</noscript>
+    </main>
+    <div id="screen" hidden></div>
+    <script src="mnaka_client.js"></script>
+    <script src="qtloader.js"></script>
+    <script src="mnaka-boot.js"></script>
+  </body>
+</html>

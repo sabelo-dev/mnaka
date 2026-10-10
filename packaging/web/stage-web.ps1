@@ -5,7 +5,9 @@ param(
     [string]$OutputDirectory = 'build/web-dist',
     # Both or neither. Only a publishable key may be published with the page.
     [string]$SupabaseUrl = '',
-    [string]$SupabasePublishableKey = ''
+    [string]$SupabasePublishableKey = '',
+    # For hosts that cannot serve pre-encoded files, such as Amplify Hosting.
+    [switch]$SkipCompression
 )
 $ErrorActionPreference = 'Stop'
 if ([bool]$SupabaseUrl -ne [bool]$SupabasePublishableKey) { throw 'Pass -SupabaseUrl and -SupabasePublishableKey together' }
@@ -45,8 +47,12 @@ try {
         $config = @{ supabaseUrl = $SupabaseUrl; supabasePublishableKey = $SupabasePublishableKey } | ConvertTo-Json
         [IO.File]::WriteAllText($configPath, $config, (New-Object Text.UTF8Encoding($false)))
     } elseif (Test-Path -LiteralPath $configPath) { Remove-Item -LiteralPath $configPath }
-    & $node.FullName (Join-Path $PSScriptRoot 'compress.mjs') (Join-Path $outputRoot 'mnaka_client.wasm') (Join-Path $outputRoot 'mnaka_client.js')
-    if ($LASTEXITCODE -ne 0) { throw 'Brotli compression failed' }
+    if ($SkipCompression) {
+        Get-ChildItem -LiteralPath $outputRoot -Filter '*.br' | Remove-Item
+    } else {
+        & $node.FullName (Join-Path $PSScriptRoot 'compress.mjs') (Join-Path $outputRoot 'mnaka_client.wasm') (Join-Path $outputRoot 'mnaka_client.js')
+        if ($LASTEXITCODE -ne 0) { throw 'Brotli compression failed' }
+    }
 } finally { Pop-Location }
 if ($SupabaseUrl) { Write-Output "Browser client staged in $outputRoot for account service $SupabaseUrl (publishable key only)." }
 else { Write-Output "Browser client staged in $outputRoot. It contains no credentials or endpoints." }

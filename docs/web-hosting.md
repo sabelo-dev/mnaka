@@ -54,7 +54,33 @@ Differences from the desktop build:
 - `--smoke-test` is desktop-only: a browser page cannot exit with a status.
 - No tests are built for this preset.
 
-## AWS: static hosting
+## AWS Amplify Hosting (in use)
+
+The Amplify app builds from the GitHub repository. Its build image has no Qt or
+Emscripten, so `amplify.yml` compiles nothing: it publishes the prebuilt client
+committed in `dist/` and sets the security headers. To release:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File packaging/web/stage-web.ps1 `
+    -QtKit C:/Qt/6.12.0/mingw_64 -WasmQtKit C:/Qt/6.12.0/wasm_singlethread -Emsdk C:/Users/<you>/emsdk `
+    -OutputDirectory dist -SkipCompression `
+    -SupabaseUrl https://<project-ref>.supabase.co -SupabasePublishableKey sb_publishable_...
+git add dist
+git commit -m "Release browser client"
+git push
+```
+
+`dist/mnaka-config.json` carries the Supabase URL and publishable key; both are
+public by design. The CSP in `amplify.yml` names the same Supabase origin and must
+change with it.
+
+Trade-offs: every release adds a 30 MB binary to git history, and the `.wasm` is
+served uncompressed because Amplify does not compress files over 10 MB and cannot
+serve pre-encoded ones without extra rewrite rules. The `amplify.yml` headers and
+build have not been confirmed on Amplify from this repository. The root
+`package.json` is not used by the client.
+
+## AWS: static hosting with CloudFormation (alternative)
 
 `packaging/aws/web-hosting.yaml` creates a private, versioned S3 bucket, a CloudFront
 distribution that reads it through origin access control, and a response headers
