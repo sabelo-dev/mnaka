@@ -42,6 +42,7 @@ try {
     foreach ($name in 'index.html', 'mnaka-shell.css', 'mnaka-boot.js') {
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination $outputRoot
     }
+    Copy-Item -LiteralPath (Join-Path $sourceRoot 'apps/client/assets/logo.png') -Destination (Join-Path $outputRoot 'mnaka-logo.png')
     $configPath = Join-Path $outputRoot 'mnaka-config.json'
     if ($SupabaseUrl) {
         $config = @{ supabaseUrl = $SupabaseUrl; supabasePublishableKey = $SupabasePublishableKey } | ConvertTo-Json

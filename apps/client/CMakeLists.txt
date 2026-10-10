@@ -2,7 +2,7 @@
 qt_add_library(mnaka_client_module STATIC)
 set_source_files_properties(qml/Main.qml PROPERTIES QT_RESOURCE_ALIAS Main.qml)
 # The module sits under the build root so editor tooling resolves the import.
-qt_add_qml_module(mnaka_client_module URI Mnaka.App VERSION 1.0 OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Mnaka/App QML_FILES qml/Main.qml SOURCES WorkspaceModel.h WorkspaceModel.cpp)
+qt_add_qml_module(mnaka_client_module URI Mnaka.App VERSION 1.0 OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Mnaka/App QML_FILES qml/Main.qml RESOURCES assets/logo.png SOURCES WorkspaceModel.h WorkspaceModel.cpp)
 target_include_directories(mnaka_client_module PUBLIC ${CMAKE_SOURCE_DIR})
 target_link_libraries(mnaka_client_module PUBLIC Qt6::Quick Qt6::Concurrent mnaka_core mnaka_engines)
 if(EMSCRIPTEN)

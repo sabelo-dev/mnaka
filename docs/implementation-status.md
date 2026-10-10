@@ -278,3 +278,23 @@ subject lookup and denial of `anon`/`authenticated` were checked there. They hav
 not run on PostgreSQL 17, on Supabase, or against the hosted project: `db push`
 needs the owner's Supabase login and database password. For any one database use
 the Supabase CLI or `mnaka_migrate`, not both.
+
+## Command Centre interface
+
+`Main.qml` was restyled after the Command Centre concept: logo and icon sidebar,
+titled header, and a three-column Overview (conversation, state orb with the six
+engine cards, and Active tasks / Approval required / Upcoming). It narrows to two
+columns below 1320 px and one below 850 px. Icons and the orb are drawn with
+`QtQuick.Shapes`; the logo is `apps/client/assets/logo.png`, also used by the web
+loading page. The nine screens, their order and all view-model bindings are
+unchanged ("Home" and "Task centre" are now labelled "Overview" and "Tasks").
+
+Unlike the concept image, the screen shows live state only: engines report their
+registry status rather than "Ready", task and approval panels are empty until the
+mock session produces something, Upcoming states that scheduling is unavailable,
+and there are no voice, search, notification or attachment controls because
+nothing backs them. The orb is decorative and turns only while a task is active.
+
+All eleven CTest targets pass, including both headless QML runs with zero
+warnings. The layouts at 1680, 1100 and 420 px wide, a typed mock task and the
+approval panel were checked by screenshot in headless Chrome only.
