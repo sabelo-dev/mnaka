@@ -1,0 +1,41 @@
+{
+    "schema_version":  "1.0",
+    "status":  "development observations; production lock incomplete",
+    "qt":  {
+               "qualification":  "pending",
+               "api_minimum":  "6.8",
+               "target_abi":  "windows-x86_64-mingw",
+               "installed_version":  "6.12.0",
+               "artifacts":  [
+                                 {
+                                     "path":  "C:/Qt/6.12.0/mingw_64/bin/Qt6Core.dll",
+                                     "sha256":  "6adc4c9cfdf7a5bc56b35750c990c32473f697776fccc30ff3c08910f1514961",
+                                     "licence_review":  "pending"
+                                 },
+                                 {
+                                     "path":  "C:/Qt/Tools/mingw1310_64/bin/g++.exe",
+                                     "sha256":  "cd65c087ad69a877e5a105c607cc910abfabcc52ba7e9448572f36567b51698c",
+                                     "licence_review":  "pending"
+                                 },
+                                 {
+                                     "path":  "C:/Qt/Tools/CMake_64/bin/cmake.exe",
+                                     "sha256":  "8c846b65810ba32a5197d0abc9748355b17508c7f887f7c43d273e46d9888c69",
+                                     "licence_review":  "pending"
+                                 },
+                                 {
+                                     "path":  "C:/Qt/Tools/Ninja/ninja.exe",
+                                     "sha256":  "68865c3276d449d746cea5065fdec2baf755d7813e161ab04205b0907b2629b8",
+                                     "licence_review":  "pending"
+                                 }
+                             ]
+           },
+    "mobile":  {
+                   "qualification":  "pending"
+               },
+    "postgresql":  {
+                       "qualification":  "unavailable",
+                       "required_major":  17,
+                       "installed_patch":  null,
+                       "container_digest":  null
+                   }
+}

@@ -1,0 +1,97 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "task_id": {
+      "type": "string",
+      "format": "uuid",
+      "minLength": 36,
+      "maxLength": 36
+    },
+    "execution_host_id": {
+      "type": "string",
+      "format": "uuid",
+      "minLength": 36,
+      "maxLength": 36
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "planning",
+        "awaiting_approval",
+        "running",
+        "cancelling",
+        "cancelled",
+        "succeeded",
+        "failed",
+        "interrupted"
+      ]
+    },
+    "artifacts": {
+      "type": "array",
+      "maxItems": 100,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^artifact:[0-9a-f-]{36}$",
+        "maxLength": 45
+      }
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "INVALID_ARGUMENT",
+            "UNAUTHENTICATED",
+            "PERMISSION_DENIED",
+            "APPROVAL_REQUIRED",
+            "CONFLICT",
+            "DEVICE_OFFLINE",
+            "PROVIDER_UNAVAILABLE",
+            "RATE_LIMITED",
+            "BUDGET_EXCEEDED",
+            "CANCELLED",
+            "INTERNAL"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "request_id": {
+          "type": "string",
+          "format": "uuid",
+          "minLength": 36,
+          "maxLength": 36
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "request_id",
+        "retryable"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "task_id",
+    "execution_host_id",
+    "state",
+    "artifacts"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mnaka.invalid/schemas/task-result.schema.json"
+}

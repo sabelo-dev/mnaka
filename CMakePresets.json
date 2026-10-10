@@ -1,0 +1,119 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 24,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "desktop-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "$env{MNAKA_QT_KIT}",
+        "BUILD_TESTING": "ON"
+      }
+    },
+    {
+      "name": "windows-debug",
+      "inherits": "desktop-base",
+      "displayName": "Windows development kit from MNAKA_QT_KIT",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "windows-release",
+      "inherits": "desktop-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "android-debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_TOOLCHAIN_FILE": "$env{MNAKA_ANDROID_QT_KIT}/lib/cmake/Qt6/qt.toolchain.cmake",
+        "QT_HOST_PATH": "$env{MNAKA_QT_KIT}",
+        "ANDROID_SDK_ROOT": "$env{ANDROID_SDK_ROOT}",
+        "ANDROID_NDK_ROOT": "$env{ANDROID_NDK_ROOT}",
+        "BUILD_TESTING": "OFF"
+      }
+    },
+    {
+      "name": "wasm-release",
+      "displayName": "Browser client (Qt for WebAssembly); needs EMSDK in the environment",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "MinSizeRel",
+        "CMAKE_TOOLCHAIN_FILE": "$env{MNAKA_WASM_QT_KIT}/lib/cmake/Qt6/qt.toolchain.cmake",
+        "QT_HOST_PATH": "$env{MNAKA_QT_KIT}",
+        "BUILD_TESTING": "OFF"
+      }
+    },
+    {
+      "name": "relay-linux",
+      "inherits": "desktop-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "MNAKA_BUILD_RELAY": "ON"
+      },
+      "description": "Reserved for relay qualification; configure fails explicitly until relay targets are implemented."
+    },
+    {
+      "name": "tests-linux",
+      "inherits": "desktop-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "BUILD_TESTING": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-debug",
+      "configurePreset": "windows-debug"
+    },
+    {
+      "name": "windows-release",
+      "configurePreset": "windows-release"
+    },
+    {
+      "name": "android-debug",
+      "configurePreset": "android-debug"
+    },
+    {
+      "name": "wasm-release",
+      "configurePreset": "wasm-release"
+    },
+    {
+      "name": "relay-linux",
+      "configurePreset": "relay-linux"
+    },
+    {
+      "name": "tests-linux",
+      "configurePreset": "tests-linux"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "windows-debug",
+      "configurePreset": "windows-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "tests-linux",
+      "configurePreset": "tests-linux",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+    "schema_version": "1.0",
+    "status": "foundation build; no engine is enabled outside the opt-in mock session",
+    "host_version": "0.1.0",
+    "engines": [
+        {
+            "id": "assistant",
+            "default": { "enabled": false, "status": "Service unavailable" },
+            "mock_session": { "enabled": true, "status": "Mock provider (fixture)", "tools": ["demo.echo", "demo.review"] }
+        },
+        { "id": "software", "label": "ENG-01", "default": { "enabled": false, "status": "Service unavailable" }, "mock_session": { "enabled": false, "status": "Integration pending", "tools": [] } },
+        { "id": "control", "label": "ENG-02", "default": { "enabled": false, "status": "Service unavailable" }, "mock_session": { "enabled": false, "status": "Integration pending", "tools": [] } },
+        { "id": "skills", "label": "ENG-03", "default": { "enabled": false, "status": "Service unavailable" }, "mock_session": { "enabled": false, "status": "Integration pending", "tools": [] } },
+        { "id": "memory", "label": "ENG-04", "default": { "enabled": false, "status": "Service unavailable" }, "mock_session": { "enabled": false, "status": "Integration pending", "tools": [] } },
+        { "id": "vision", "label": "ENG-05", "default": { "enabled": false, "status": "Service unavailable" }, "mock_session": { "enabled": false, "status": "Integration pending", "tools": [] } },
+        { "id": "proactive", "label": "ENG-06", "default": { "enabled": false, "status": "Service unavailable" }, "mock_session": { "enabled": false, "status": "Integration pending", "tools": [] } }
+    ],
+    "tools": [
+        { "name": "demo.echo", "engine": "assistant", "kind": "fixture", "approval": false, "external_effects": false },
+        { "name": "demo.review", "engine": "assistant", "kind": "fixture", "approval": true, "external_effects": false }
+    ],
+    "local_features": [
+        { "id": "vision.image_preview", "status": "available", "note": "Local PNG/JPEG preview only; no upload, persistence, OCR or interpretation." },
+        { "id": "skills.manifest_inspection", "status": "available", "note": "Inspection only; grants no scope and cannot install or execute." }
+    ],
+    "storage": { "postgresql": "unqualified", "ui_connected": false, "fallback": null }
+}

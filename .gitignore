@@ -1,0 +1,6 @@
+build/
+.qtcreator/
+CMakeLists.txt.user*
+CMakeUserPresets.json
+.claude/settings.local.json
+.qmlls.ini
