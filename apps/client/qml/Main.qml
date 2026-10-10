@@ -331,7 +331,7 @@ ApplicationWindow {
                             }
                             Caption { text: "Runs typed requests through the task orchestrator, mock model provider and the broker's two fixture tools. Session-only: turning it off or closing MNAKA discards its messages, tasks and events."; Layout.fillWidth: true }
                             Label { text: workspace.mockSession ? "Model provider: MockModelProvider (deterministic fixture)" : "Model provider: not connected"; color: window.cyan }
-                            Caption { text: "Cloud transmission: disabled\nMicrophone / wake detection: unavailable\nCamera / gesture detection: unavailable\nPostgreSQL: " + (Qt.platform.os === "wasm" ? "not part of the browser build" : "desktop adapter built; UI persistence not connected") + "\nBroker: " +(workspace.mockSession ? "fixture tools only (demo.echo, demo.review); no OS access" : "execution disabled") + "\nRelay and mobile pairing: unavailable\nModes affect workflows, never permissions."; Layout.fillWidth: true }
+                            Caption { text: "Cloud transmission: " + (workspace.accountConfigured ? "account sign-in only" : "disabled") + "\nMicrophone / wake detection: unavailable\nCamera / gesture detection: unavailable\nPostgreSQL: " + (Qt.platform.os === "wasm" ? "not part of the browser build" : "desktop adapter built; UI persistence not connected") + "\nBroker: " +(workspace.mockSession ? "fixture tools only (demo.echo, demo.review); no OS access" : "execution disabled") + "\nRelay and mobile pairing: unavailable\nModes affect workflows, never permissions."; Layout.fillWidth: true }
                             Label { text: "ENGINE REGISTRY"; color: window.muted; font.pixelSize: 11 }
                             Repeater {
                                 model: workspace.capabilities
@@ -342,6 +342,41 @@ ApplicationWindow {
                                 }
                             }
                             Button { text: "Delete session history"; onClicked: clearDialog.open() }
+                        }
+                    }
+                    Card {
+                        visible: window.page === 8; Layout.fillWidth: true; Layout.leftMargin: 28; Layout.rightMargin: 28
+                        implicitHeight: accountContent.implicitHeight + 48
+                        ColumnLayout {
+                            id: accountContent; anchors.fill: parent; anchors.margins: 24; spacing: 12
+                            property bool signedIn: workspace.accountEmail.length > 0
+                            Heading { text: "Account" }
+                            Caption {
+                                Layout.fillWidth: true
+                                text: !workspace.accountConfigured ? "No account service is configured for this build."
+                                    : accountContent.signedIn ? "Signed in as " + workspace.accountEmail + ". The session is kept in memory only and ends when you close MNAKA. Signing in does not enable any engine, tool or storage."
+                                    : "Your email and password are sent to the configured Supabase project over HTTPS. Nothing else leaves this device, and the session is not saved."
+                            }
+                            TextField {
+                                id: accountEmailField; visible: workspace.accountConfigured && !accountContent.signedIn
+                                Layout.fillWidth: true; Layout.maximumWidth: 420
+                                placeholderText: "Email"; inputMethodHints: Qt.ImhEmailCharactersOnly | Qt.ImhNoAutoUppercase
+                                Accessible.name: "Account email"
+                            }
+                            TextField {
+                                id: accountPasswordField; visible: accountEmailField.visible
+                                Layout.fillWidth: true; Layout.maximumWidth: 420
+                                placeholderText: "Password"; echoMode: TextInput.Password
+                                Accessible.name: "Account password"
+                                onAccepted: { workspace.signIn(accountEmailField.text, text); clear() }
+                            }
+                            RowLayout {
+                                visible: accountEmailField.visible
+                                Button { text: "Sign in"; enabled: !workspace.accountBusy; onClicked: { workspace.signIn(accountEmailField.text, accountPasswordField.text); accountPasswordField.clear() } }
+                                Button { text: "Create account"; enabled: !workspace.accountBusy; onClicked: { workspace.signUp(accountEmailField.text, accountPasswordField.text); accountPasswordField.clear() } }
+                            }
+                            Button { visible: accountContent.signedIn; text: "Sign out"; onClicked: workspace.signOut() }
+                            Caption { text: workspace.accountBusy ? "Contacting the account service…" : workspace.accountNotice; visible: text.length > 0; Layout.fillWidth: true }
                         }
                     }
                     Caption { Layout.leftMargin: 28; Layout.rightMargin: 28; Layout.fillWidth: true; text: "MNAKA v1.1 specification · Foundation preview · Production release gates remain pending"; font.pixelSize: 11 }

@@ -66,8 +66,18 @@ a real server, so it is unverified.
 checksums; each migration commits with its ledger record. `.gitattributes`
 keeps the SQL byte-exact.
 
-**Hosted browser client.** The WebAssembly build is static files with no
-credentials, endpoints or network code. The hosting template serves it over HTTPS
+**Account sign-in.** With a configured Supabase project the client sends the
+user's email and password to its Auth endpoint over HTTPS and nowhere else; the
+URL must be an https origin, redirects are not followed, and secret or
+service-role keys are refused. Tokens stay in C++ memory and never reach QML or
+storage. Server error text is bounded and shown as plain text. A session grants
+no authority: no engine, tool or store consults it, and nothing server-side
+verifies it yet. The publishable key and project URL are public; what they
+permit is decided by the Supabase project's own settings and policies.
+
+**Hosted browser client.** The WebAssembly build is static files. The only
+configuration it carries is the public Supabase URL and publishable key, and its
+only network calls are account sign-in. The hosting template serves it over HTTPS
 only, from a private bucket, with a CSP that allows same-origin scripts and
 WebAssembly compilation but not `unsafe-eval`, and forbids framing. Inline styles
 are allowed because Qt injects one. A picked image stays in page memory. Whoever
@@ -80,7 +90,7 @@ session history.
 
 ## Open
 
-- No authentication or session verification; the mock session identity is random.
+- Sign-in exists but no session verification; the mock session identity is random and unrelated to the account.
 - No persistence, so interrupted-task recovery and replay are session-only.
 - Transactional approval/tool-effect ordering (section 23) is not built.
 - No sandbox, process isolation or control adapters.

@@ -12,6 +12,7 @@ namespace mnaka {
 class TaskOrchestrator;
 class EngineRegistry;
 class TaskStore;
+class SupabaseAuth;
 }
 
 class WorkspaceModel : public QObject {
@@ -32,6 +33,11 @@ class WorkspaceModel : public QObject {
     // True in the browser, where the page's own file chooser replaces the Qt dialog.
     Q_PROPERTY(bool browserImagePicker READ browserImagePicker CONSTANT)
     Q_PROPERTY(QString skillReport READ skillReport NOTIFY skillReportChanged)
+    // Account identity only: signing in enables no engine, tool or storage. Tokens stay in C++.
+    Q_PROPERTY(bool accountConfigured READ accountConfigured CONSTANT)
+    Q_PROPERTY(QString accountEmail READ accountEmail NOTIFY accountChanged)
+    Q_PROPERTY(bool accountBusy READ accountBusy NOTIFY accountChanged)
+    Q_PROPERTY(QString accountNotice READ accountNotice NOTIFY accountChanged)
     // Opt-in fixture session: mock provider, fixture broker tools, nothing persisted.
     Q_PROPERTY(bool mockSession READ mockSession WRITE setMockSession NOTIFY changed)
 public:
@@ -51,6 +57,10 @@ public:
     QString imageNotice() const { return m_imageNotice; }
     bool browserImagePicker() const;
     QString skillReport() const { return m_skillReport; }
+    bool accountConfigured() const { return m_auth != nullptr; }
+    QString accountEmail() const;
+    bool accountBusy() const;
+    QString accountNotice() const { return m_accountNotice; }
     bool mockSession() const { return m_orchestrator != nullptr; }
     void setMockSession(bool enabled);
     Q_INVOKABLE void inspectSkill(QString manifest);
@@ -58,6 +68,9 @@ public:
     Q_INVOKABLE void selectImage(QUrl file);
     Q_INVOKABLE void pickImage();
     Q_INVOKABLE void clearImage();
+    Q_INVOKABLE void signIn(QString email, QString password);
+    Q_INVOKABLE void signUp(QString email, QString password);
+    Q_INVOKABLE void signOut();
     Q_INVOKABLE bool submit(QString text, QString mode);
     Q_INVOKABLE void cancel();
     Q_INVOKABLE void clearHistory();
@@ -71,6 +84,7 @@ signals:
     void capabilitiesChanged();
     void imageChanged();
     void skillReportChanged();
+    void accountChanged();
 private:
     void loadImage(std::function<QByteArray()> read);
     void refresh();
@@ -78,6 +92,8 @@ private:
     QString m_notice;
     QString m_imagePreview, m_imageNotice;
     QString m_skillReport;
+    mnaka::SupabaseAuth *m_auth = nullptr;
+    QString m_accountNotice;
     bool m_imageLoading = false;
     quint64 m_imageGeneration = 0;
     // Engine, broker and store handles stay on this side of the QML boundary.

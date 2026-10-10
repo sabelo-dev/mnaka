@@ -45,3 +45,11 @@ connection pool/thread/TLS/identity-reset integration tests remain pending.
 
 The local schema contains storage references, not an encryption implementation.
 Do not persist private content until the encrypted content repository is added.
+
+## Supabase
+
+`supabase/migrations` carries copies of the relay migrations for the Supabase CLI,
+plus one Supabase-only migration. Apply a Supabase-hosted relay database with
+`npx supabase db push`, not with `mnaka_migrate`: the two keep separate ledgers.
+Edit `relay-postgres` and its copy together; CTest compares them. See
+`docs/web-hosting.md`.

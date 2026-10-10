@@ -1,2 +1,3 @@
 # mnaka_migrate checksums the raw bytes of each migration; never convert line endings.
 migrations/**/*.sql -text
+supabase/migrations/*.sql -text

@@ -2,9 +2,16 @@ param(
     [Parameter(Mandatory=$true)][string]$QtKit,
     [Parameter(Mandatory=$true)][string]$WasmQtKit,
     [Parameter(Mandatory=$true)][string]$Emsdk,
-    [string]$OutputDirectory = 'build/web-dist'
+    [string]$OutputDirectory = 'build/web-dist',
+    # Both or neither. Only a publishable key may be published with the page.
+    [string]$SupabaseUrl = '',
+    [string]$SupabasePublishableKey = ''
 )
 $ErrorActionPreference = 'Stop'
+if ([bool]$SupabaseUrl -ne [bool]$SupabasePublishableKey) { throw 'Pass -SupabaseUrl and -SupabasePublishableKey together' }
+if ($SupabasePublishableKey -and -not $SupabasePublishableKey.StartsWith('sb_publishable_')) {
+    throw 'Refusing to publish a key that is not a Supabase publishable key'
+}
 $sourceRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '../..')).Path
 $emsdkRoot = (Resolve-Path -LiteralPath $Emsdk).Path
 $node = Get-ChildItem -Path (Join-Path $emsdkRoot 'node') -Filter node.exe -Recurse | Select-Object -First 1
@@ -33,7 +40,13 @@ try {
     foreach ($name in 'index.html', 'mnaka-shell.css', 'mnaka-boot.js') {
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination $outputRoot
     }
+    $configPath = Join-Path $outputRoot 'mnaka-config.json'
+    if ($SupabaseUrl) {
+        $config = @{ supabaseUrl = $SupabaseUrl; supabasePublishableKey = $SupabasePublishableKey } | ConvertTo-Json
+        [IO.File]::WriteAllText($configPath, $config, (New-Object Text.UTF8Encoding($false)))
+    } elseif (Test-Path -LiteralPath $configPath) { Remove-Item -LiteralPath $configPath }
     & $node.FullName (Join-Path $PSScriptRoot 'compress.mjs') (Join-Path $outputRoot 'mnaka_client.wasm') (Join-Path $outputRoot 'mnaka_client.js')
     if ($LASTEXITCODE -ne 0) { throw 'Brotli compression failed' }
 } finally { Pop-Location }
-Write-Output "Browser client staged in $outputRoot. It contains no credentials or endpoints."
+if ($SupabaseUrl) { Write-Output "Browser client staged in $outputRoot for account service $SupabaseUrl (publishable key only)." }
+else { Write-Output "Browser client staged in $outputRoot. It contains no credentials or endpoints." }

@@ -1,0 +1,11 @@
+# Supabase CLI project for the relay database and account sign-in. Unlisted settings keep the
+# CLI defaults. Link it to a hosted project with: npx supabase link --project-ref <project-ref>
+project_id = "mnaka"
+
+[api]
+# The relay schema is deliberately absent: it is never served through the Data API.
+schemas = ["public", "graphql_public"]
+
+[db]
+# mnaka's storage code requires PostgreSQL 17.
+major_version = 17

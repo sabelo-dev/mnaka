@@ -231,13 +231,50 @@ The client links with `-sDYNAMIC_EXECUTION=0` so it runs under a CSP without
 image loader; all eight CTest targets still pass on the MinGW kit.
 
 `packaging/web` stages the static bundle, `packaging/aws` holds a CloudFormation
-template (private S3, CloudFront, security headers) and an upload script, and
-`packaging/supabase` holds the relay runtime-role grants. See `web-hosting.md`.
+template (private S3, CloudFront, security headers) and an upload script. See
+`web-hosting.md`.
 
 Checked in headless Chrome against a local server sending the production headers
 and Brotli encoding: startup, navigation, a mock-session task through to
 `succeeded`, and an image preview through the file-input fallback. Not checked:
 Chrome's File System Access picker beyond opening it, other browsers, mobile, and
-any real AWS or Supabase deployment. The template passes cfn-lint but has never
-been deployed; the Supabase SQL has never run. The browser build has no automated
+any real AWS deployment. The template passes cfn-lint but has never been deployed. The browser build has no automated
 tests, and `--smoke-test` does not work there.
+
+## Account sign-in (Supabase Auth)
+
+`adapters/supabase/SupabaseAuth` signs in, creates accounts and signs out with
+email and password against a Supabase project's Auth endpoints, and refreshes the
+session before it expires. The project URL and publishable key come from
+`MNAKA_SUPABASE_URL` and `MNAKA_SUPABASE_PUBLISHABLE_KEY`; the browser page sets
+them from `mnaka-config.json`, written by the staging script. Secret and
+service-role keys and non-https URLs are rejected before any request. Tokens stay
+in C++ memory and are not persisted; QML sees the email only. Settings has an
+Account card. Without configuration it says so and nothing is sent.
+
+This is identity only. A session enables no engine, tool or storage, and no relay
+or host API exists to verify it. Password reset and session persistence are not built.
+
+A ninth CTest target, supabase_auth_contract, runs against a loopback stand-in:
+key and URL validation, request shape, sign-in and sign-out, rejected credentials,
+malformed sessions, sign-up awaiting confirmation, an unreachable service and a
+rejected refresh. All nine targets pass on the MinGW kit. Against the live project,
+only a rejected sign-in was exercised, from the browser build under the production
+CSP. A successful sign-in, account creation and token refresh have not run against
+real Supabase, and desktop HTTPS was not exercised.
+
+## Supabase CLI project for the relay database
+
+`supabase/` holds a minimal `config.toml` (PostgreSQL 17, `relay` not exposed to the
+Data API) and three migrations: byte-identical copies of the two relay migrations,
+and a Supabase-only one that provisions the `mnaka_relay_runtime` role, creates a
+`relay.accounts` row for each Supabase Auth user by trigger (with a backfill), and
+lets the relay look up an account by verified token subject. Two CTest targets
+compare the copies with `migrations/relay-postgres`; eleven targets pass.
+
+The migrations were applied to an in-process PostgreSQL (PGlite, version 18) with a
+stand-in `auth` schema, as a role without `BYPASSRLS`, and owner isolation, the
+subject lookup and denial of `anon`/`authenticated` were checked there. They have
+not run on PostgreSQL 17, on Supabase, or against the hosted project: `db push`
+needs the owner's Supabase login and database password. For any one database use
+the Supabase CLI or `mnaka_migrate`, not both.

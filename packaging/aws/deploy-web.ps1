@@ -14,8 +14,11 @@ $files = @(
     @{ Key = 'qtloader.js'; File = 'qtloader.js'; Type = 'text/javascript; charset=utf-8' },
     @{ Key = 'mnaka-boot.js'; File = 'mnaka-boot.js'; Type = 'text/javascript; charset=utf-8' },
     @{ Key = 'mnaka-shell.css'; File = 'mnaka-shell.css'; Type = 'text/css; charset=utf-8' },
+    @{ Key = 'mnaka-config.json'; File = 'mnaka-config.json'; Type = 'application/json'; Optional = $true },
     @{ Key = 'index.html'; File = 'index.html'; Type = 'text/html; charset=utf-8' }
 )
+# Present only when the bundle was staged with an account service.
+$files = @($files | Where-Object { -not $_.Optional -or (Test-Path -LiteralPath (Join-Path $sourceRoot $_.File)) })
 foreach ($entry in $files) {
     if (-not (Test-Path -LiteralPath (Join-Path $sourceRoot $entry.File))) {
         throw "Missing $($entry.File); run packaging/web/stage-web.ps1 first"

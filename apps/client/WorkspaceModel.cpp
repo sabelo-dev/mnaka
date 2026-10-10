@@ -11,6 +11,7 @@
 #include "engines/skills/SkillValidator.h"
 #include "engines/assistant/ConversationEngine.h"
 #include "adapters/mock/MockModelProvider.h"
+#include "adapters/supabase/SupabaseAuth.h"
 #include "core/orchestrator/TaskOrchestrator.h"
 #ifdef Q_OS_WASM
 #include <QPointer>
@@ -46,7 +47,15 @@ QPair<QString, QString> decodePreview(QByteArray bytes) {
 }
 }
 
-WorkspaceModel::WorkspaceModel(QObject *parent) : QObject(parent) {}
+WorkspaceModel::WorkspaceModel(QObject *parent) : QObject(parent) {
+    // Deployment configuration, not a secret: the browser page or the desktop environment supplies it.
+    const auto url = qEnvironmentVariable("MNAKA_SUPABASE_URL"), key = qEnvironmentVariable("MNAKA_SUPABASE_PUBLISHABLE_KEY");
+    if (url.isEmpty() && key.isEmpty()) return;
+    m_auth = new SupabaseAuth(QUrl(url, QUrl::StrictMode), key, this);
+    m_accountNotice = m_auth->configError();
+    connect(m_auth, &SupabaseAuth::changed, this, &WorkspaceModel::accountChanged);
+    connect(m_auth, &SupabaseAuth::notice, this, [this](QString message) { m_accountNotice = message; emit accountChanged(); });
+}
 WorkspaceModel::~WorkspaceModel() { delete m_runtime; } // the orchestrator must go before its store
 
 void WorkspaceModel::inspectSkill(QString text) {
@@ -71,6 +80,12 @@ void WorkspaceModel::inspectSkill(QString text) {
     }
     emit skillReportChanged();
 }
+
+QString WorkspaceModel::accountEmail() const { return m_auth ? m_auth->email() : QString(); }
+bool WorkspaceModel::accountBusy() const { return m_auth && m_auth->busy(); }
+void WorkspaceModel::signIn(QString email, QString password) { if (m_auth) m_auth->signIn(email, password); }
+void WorkspaceModel::signUp(QString email, QString password) { if (m_auth) m_auth->signUp(email, password); }
+void WorkspaceModel::signOut() { if (m_auth) m_auth->signOut(); }
 
 void WorkspaceModel::clearImage() {
     ++m_imageGeneration; m_imagePreview.clear(); m_imageNotice.clear(); m_imageLoading = false; emit imageChanged();

@@ -16,8 +16,8 @@ Parameters:
     Type: String
     Default: "'self'"
     Description: >-
-      CSP connect-src value. The client makes no network calls today; when it gains sign-in,
-      add the Supabase project origin here, e.g. 'self' https://<project-ref>.supabase.co
+      CSP connect-src value. Account sign-in needs the Supabase project origin here,
+      e.g. 'self' https://<project-ref>.supabase.co
   PriceClass:
     Type: String
     Default: PriceClass_All

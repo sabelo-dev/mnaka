@@ -18,5 +18,7 @@ set_target_properties(mnaka_client PROPERTIES WIN32_EXECUTABLE TRUE MACOSX_BUNDL
 if(EMSCRIPTEN)
     # No eval/new Function in the generated glue, so the page runs under a CSP without 'unsafe-eval'.
     target_link_options(mnaka_client PRIVATE -sDYNAMIC_EXECUTION=0)
+    # Lets the page pass the account service configuration as environment variables.
+    set_target_properties(mnaka_client PROPERTIES QT_WASM_EXTRA_EXPORTED_METHODS ENV)
 endif()
 install(TARGETS mnaka_client BUNDLE DESTINATION . RUNTIME DESTINATION bin)
