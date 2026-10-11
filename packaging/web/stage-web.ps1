@@ -39,7 +39,7 @@ try {
     foreach ($name in 'mnaka_client.js', 'mnaka_client.wasm', 'qtloader.js') {
         Copy-Item -LiteralPath (Join-Path $buildRoot $name) -Destination $outputRoot
     }
-    foreach ($name in 'index.html', 'mnaka-shell.css', 'mnaka-boot.js') {
+    foreach ($name in 'index.html', 'mnaka-shell.css', 'mnaka-boot.js', 'manifest.json', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png') {
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination $outputRoot
     }
     Copy-Item -LiteralPath (Join-Path $sourceRoot 'apps/client/assets/logo.png') -Destination (Join-Path $outputRoot 'mnaka-logo.png')

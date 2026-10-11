@@ -9,7 +9,8 @@ import Mnaka.App
 ApplicationWindow {
     id: window
     width: 1440; height: 900
-    minimumWidth: Qt.platform.os === "wasm" ? 0 : 380; minimumHeight: Qt.platform.os === "wasm" ? 0 : 600
+    readonly property bool fillsScreen: Qt.platform.os === "wasm" || Qt.platform.os === "android"
+    minimumWidth: fillsScreen ? 0 : 380; minimumHeight: fillsScreen ? 0 : 600
     visible: true
     title: "MNAKA · AI workspace"
     font.family: window.mono
@@ -21,7 +22,7 @@ ApplicationWindow {
     property color panel: "#06110b"
     property color line: "#14402a"
     // Code font: Qt for WebAssembly bundles DejaVu Sans Mono.
-    readonly property string mono: Qt.platform.os === "windows" ? "Consolas" : "DejaVu Sans Mono"
+    readonly property string mono: Qt.platform.os === "windows" ? "Consolas" : Qt.platform.os === "android" ? "monospace" : "DejaVu Sans Mono"
     property int page: 0
     property bool compact: width < 850
     property bool wide: width >= 1320
@@ -391,7 +392,7 @@ ApplicationWindow {
                         Rectangle { implicitWidth: 8; implicitHeight: 8; radius: 4; color: workspace.connected ? "#22c55e" : workspace.mockSession ? "#f5b544" : "#2f5a44" }
                         Caption { text: workspace.connected ? "Connected" : workspace.mockSession ? "Mock session" : "Not connected" }
                     }
-                    Pill { text: "●  " + workspace.state; tint: workspace.busy ? "#ffb000" : window.cyan }
+                    Pill { visible: !window.compact; text: "●  " + workspace.state; tint: workspace.busy ? "#ffb000" : window.cyan }
                     ComboBox { id: mode; model: ["Assistant", "Developer", "Autonomous"]; Layout.preferredWidth: 170; Accessible.name: "Workflow mode" }
                 }
             }

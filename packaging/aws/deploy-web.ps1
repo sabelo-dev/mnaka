@@ -15,6 +15,10 @@ $files = @(
     @{ Key = 'mnaka-boot.js'; File = 'mnaka-boot.js'; Type = 'text/javascript; charset=utf-8' },
     @{ Key = 'mnaka-shell.css'; File = 'mnaka-shell.css'; Type = 'text/css; charset=utf-8' },
     @{ Key = 'mnaka-logo.png'; File = 'mnaka-logo.png'; Type = 'image/png' },
+    @{ Key = 'icon-192.png'; File = 'icon-192.png'; Type = 'image/png' },
+    @{ Key = 'icon-512.png'; File = 'icon-512.png'; Type = 'image/png' },
+    @{ Key = 'icon-maskable-512.png'; File = 'icon-maskable-512.png'; Type = 'image/png' },
+    @{ Key = 'manifest.json'; File = 'manifest.json'; Type = 'application/manifest+json' },
     @{ Key = 'mnaka-config.json'; File = 'mnaka-config.json'; Type = 'application/json'; Optional = $true },
     @{ Key = 'index.html'; File = 'index.html'; Type = 'text/html; charset=utf-8' }
 )

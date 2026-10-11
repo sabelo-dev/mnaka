@@ -429,3 +429,46 @@ Android recogniser (`available` is false there, and Firefox has no Web Speech
 recognition). Verified in headless Chrome with a simulated recogniser: listening state,
 interim transcript, a spoken navigation command and a spoken message. Not verified: a
 real microphone, the permission prompt, or real speech recognition accuracy.
+
+## Installable on Android (web app)
+
+The hosted client can be installed from Chrome on Android: `packaging/web/manifest.json`
+(standalone display, theme colours) and three icons generated from the logo by
+`packaging/web/make-icons.py`, linked from `index.html` and staged with the bundle.
+The CSP gained `manifest-src 'self'`, which `default-src 'none'` otherwise blocks.
+There is no service worker, so the app needs a connection to start and nothing works
+offline. Chrome reported a valid manifest and no installability errors under mobile
+emulation; the phone-width layout was checked by screenshot there. Not checked on a
+physical phone: installing, the on-screen keyboard, the microphone prompt and
+performance of the 30 MB download on mobile data.
+
+A native Android package is not built. The `android-debug` preset and the Qt Android
+kits exist, and the Android SDK and NDK are installed, but no JDK is, and the client
+has never been built, packaged or run for Android. A native build would also have no
+voice input and no browser file chooser.
+
+## Native Android package
+
+`packaging/android/build-apk.ps1` builds a debug-signed APK with the `android-debug`
+preset: Qt 6.12.0 `android_arm64_v8a`, NDK 27.2, JDK 21, Gradle 9.5.1. This supersedes
+"A native Android package is not built" above. Package `org.mnaka.client`, label
+"MNAKA", launcher icons generated from the logo, arm64-v8a only, about 82 MB.
+
+Android-specific changes: the Supabase URL and publishable key can be compiled in
+(`MNAKA_SUPABASE_URL`, `MNAKA_SUPABASE_PUBLISHABLE_KEY` cache variables; a key that is
+not a publishable key fails configure) because the app has no environment to read;
+files from the system picker arrive as `content://` URIs and are opened as such; the
+window has no minimum size; the code font is the system monospace; and OpenSSL 3 is
+packaged for HTTPS, fetched at configure time from KDAB's `android_openssl` pinned to
+commit b71f1470 with a SHA-256 check. That is a prebuilt binary dependency taken on
+trust from its publisher.
+
+Verified: the package builds, and its manifest, permissions (INTERNET,
+ACCESS_NETWORK_STATE, and Qt's default storage permissions), native libraries
+(including `libssl_3`, `libcrypto_3` and Qt's OpenSSL backend) and debug signature
+were inspected. Not verified: the app has never been installed or started on a device
+or emulator, so startup, rendering, sign-in over HTTPS, the keyboard, file picking and
+saving on Android are all unproven. Voice input is not available in this build; it
+exists only in the browser. The package is debug-signed and unoptimised: it can be
+side-loaded, not published to a store, and an update must be signed with the same
+debug key from this machine.

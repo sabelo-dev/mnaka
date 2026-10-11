@@ -13,6 +13,7 @@
 #include "engines/assistant/ConversationEngine.h"
 #include "adapters/mock/MockModelProvider.h"
 #include "adapters/supabase/SupabaseAuth.h"
+#include "apps/client/PickedFile.h"
 #include "adapters/supabase/SupabaseData.h"
 #include "adapters/supabase/GatewayModelProvider.h"
 #include "core/orchestrator/TaskOrchestrator.h"
@@ -57,7 +58,8 @@ QPair<QString, QString> decodePreview(QByteArray bytes) {
 
 WorkspaceModel::WorkspaceModel(QObject *parent) : QObject(parent), m_developer(new DeveloperSession(this)), m_voice(new VoiceInput(this)) {
     // Deployment configuration, not a secret: the browser page or the desktop environment supplies it.
-    const auto url = qEnvironmentVariable("MNAKA_SUPABASE_URL"), key = qEnvironmentVariable("MNAKA_SUPABASE_PUBLISHABLE_KEY");
+    const auto url = qEnvironmentVariable("MNAKA_SUPABASE_URL", QStringLiteral(MNAKA_DEFAULT_SUPABASE_URL)),
+        key = qEnvironmentVariable("MNAKA_SUPABASE_PUBLISHABLE_KEY", QStringLiteral(MNAKA_DEFAULT_SUPABASE_KEY));
     if (url.isEmpty() && key.isEmpty()) return;
     m_auth = new SupabaseAuth(QUrl(url, QUrl::StrictMode), key, this);
     m_accountNotice = m_auth->configError();
@@ -104,8 +106,9 @@ void WorkspaceModel::clearImage() {
 }
 void WorkspaceModel::selectImage(QUrl url) {
     clearImage();
-    if (!url.isLocalFile()) { m_imageNotice = "Select a local PNG or JPEG file."; emit imageChanged(); return; }
-    loadImage([path = url.toLocalFile()]() -> QByteArray {
+    const auto path = pickedFilePath(url);
+    if (path.isEmpty()) { m_imageNotice = "Select a local PNG or JPEG file."; emit imageChanged(); return; }
+    loadImage([path]() -> QByteArray {
         QFile file(path);
         if (!file.open(QIODevice::ReadOnly) || file.size() <= 0 || file.size() > maxImageBytes) return {};
         return file.read(maxImageBytes + 1);

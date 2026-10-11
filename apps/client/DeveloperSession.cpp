@@ -1,5 +1,6 @@
 #include "DeveloperSession.h"
 #include "adapters/supabase/SupabaseData.h"
+#include "apps/client/PickedFile.h"
 #include "engines/software/LineDiff.h"
 #include <QFile>
 #include <QFileInfo>
@@ -59,9 +60,10 @@ QString DeveloperSession::addFile(const QString &name, const QByteArray &bytes) 
 void DeveloperSession::addFiles(QList<QUrl> localFiles) {
     QStringList refused;
     for (const auto &url : localFiles) {
-        QFile file(url.toLocalFile());
-        if (!url.isLocalFile() || !file.open(QIODevice::ReadOnly) || file.size() > maxFileBytes) {
-            refused.append(QFileInfo(url.toLocalFile()).fileName() + " could not be read or is larger than 64 KiB.");
+        const auto source = pickedFilePath(url);
+        QFile file(source);
+        if (source.isEmpty() || !file.open(QIODevice::ReadOnly) || file.size() > maxFileBytes) {
+            refused.append(QFileInfo(source).fileName() + " could not be read or is larger than 64 KiB.");
             continue;
         }
         // Only the file name is kept: folders on this device are not sent to the model.
@@ -195,9 +197,16 @@ void DeveloperSession::saveFile(QString path, QUrl destination) {
     Q_UNUSED(destination)
     QWasmLocalFileAccess::saveFile(bytes, path.toStdString());
 #else
-    if (!destination.isLocalFile()) { say("Choose where to save " + path + "."); return; }
-    QSaveFile file(destination.toLocalFile());
-    if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit()) { say(path + " could not be saved."); return; }
+    const auto target = pickedFilePath(destination);
+    if (target.isEmpty()) { say("Choose where to save " + path + "."); return; }
+    if (destination.isLocalFile()) {
+        QSaveFile file(target);
+        if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit()) { say(path + " could not be saved."); return; }
+    } else {
+        // An Android document URI: there is no temporary sibling to rename, so write in place.
+        QFile file(target);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate) || file.write(bytes) != bytes.size()) { say(path + " could not be saved."); return; }
+    }
 #endif
     m_unsaved.remove(path);
     say({});
