@@ -55,7 +55,7 @@ QPair<QString, QString> decodePreview(QByteArray bytes) {
 }
 }
 
-WorkspaceModel::WorkspaceModel(QObject *parent) : QObject(parent) {
+WorkspaceModel::WorkspaceModel(QObject *parent) : QObject(parent), m_developer(new DeveloperSession(this)) {
     // Deployment configuration, not a secret: the browser page or the desktop environment supplies it.
     const auto url = qEnvironmentVariable("MNAKA_SUPABASE_URL"), key = qEnvironmentVariable("MNAKA_SUPABASE_PUBLISHABLE_KEY");
     if (url.isEmpty() && key.isEmpty()) return;
@@ -238,6 +238,7 @@ void WorkspaceModel::syncAccount() {
     m_mock = false; m_live = signedIn;
     m_memories.clear(); m_skills.clear(); m_rules.clear(); m_dataNotice.clear();
     m_imageAnswer.clear(); m_imageInterpreting = false;
+    m_developer->setGateway(signedIn ? m_data : nullptr);
     if (signedIn) {
         startRuntime(new GatewayModelProvider(m_auth->projectUrl(), m_auth->publishableKey(), m_token), "Your model, via account gateway", liveEngineStatus());
         loadAccountData();

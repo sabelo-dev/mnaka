@@ -363,3 +363,49 @@ Deployed to the Supabase project on 2026-10-11: the account-data migration and t
 and the function refuses a call without a session. Not checked anywhere real: a
 signed-in call, because no model secrets are set and no test account was created, and
 any actual model, including image input.
+
+## Terminal theme and scrolling
+
+The interface now uses a terminal look: near-black background, green accents with
+amber for warnings, one monospace font, square corners, bracketed section titles,
+lower-case navigation, a blinking caret beside the greeting and static scanlines.
+Layout, screens and bindings are unchanged.
+
+Scrolling: mouse-wheel and touch scrolling already worked in headless Chrome. Fixed
+around it: the browser build no longer enforces a minimum window size (a viewport
+under 380 x 600 used to cut content off with no way to reach it); the page scrollbar
+is always shown, and wider, when the page is taller than the view; Page Up, Page
+Down, Ctrl+Home and Ctrl+End scroll the page; changing screen returns to the top; and
+the Overview follows the composer as the conversation grows. Checked by wheel and
+touch input in headless Chrome only, not on a physical phone or trackpad.
+
+## Developer Workspace: working change flow
+
+The Developer screen no longer shows sample data. `apps/client/DeveloperSession`
+holds text files the user adds (up to 24, 64 KiB each, 256 KiB together, UTF-8 only,
+file names only), sends them with a change request to the `developer` Edge Function,
+and shows the model's proposal as a real line diff (`engines/software/LineDiff`).
+The user applies or discards it; applying changes the in-session copies only, and a
+file reaches a disk only through an explicit save (a browser download, or a save
+dialog on desktop). This supersedes the earlier "Developer Workspace screen" section.
+
+The function (`supabase/functions/developer`) asks the owner's model for complete new
+file contents as JSON, extracts the object, and drops anything that is not a plain,
+bounded text file with a safe name. The client validates the reply again and refuses
+the whole proposal if any entry is unsafe. Model output is never executed. History
+stores the request and the model's summary, not file contents. `assistant` and
+`developer` now share `supabase/functions/_shared/gateway.ts`.
+
+Not built: builds, tests, folders, binary files, project indexing, partial-file edits,
+conflict handling, and routing this through the orchestrator and broker (it is a
+direct call, like image interpretation). The checklist marks "Run tests" as not run,
+and the summary is labelled as the model's own, unverified.
+
+Verified: `account_session_contract` gained diff, validation and end-to-end cases
+(request, proposal, apply, save to a chosen path, refused and malformed replies,
+discard, sign-out); twelve targets pass. The function was run under Deno against a
+stand-in model that wraps its JSON in a code fence and names an unsafe path. The
+browser build added a file through the file chooser fallback, sent a request and
+rendered the diff against the same stand-in. Both functions were redeployed on
+2026-10-11 and refuse signed-out calls there. Not verified: any real model, the
+browser download path, and the File System Access picker with more than one file.

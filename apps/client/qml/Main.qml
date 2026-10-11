@@ -9,16 +9,17 @@ import Mnaka.App
 ApplicationWindow {
     id: window
     width: 1440; height: 900
-    minimumWidth: 380; minimumHeight: 600
+    minimumWidth: Qt.platform.os === "wasm" ? 0 : 380; minimumHeight: Qt.platform.os === "wasm" ? 0 : 600
     visible: true
     title: "MNAKA · AI workspace"
-    color: "#070b18"
-    property color ink: "#e8ecf8"
-    property color muted: "#8b95b5"
-    property color accent: "#5b61ff"
-    property color cyan: "#5ad2ff"
-    property color panel: "#0c1224"
-    property color line: "#1a2340"
+    font.family: window.mono
+    color: "#030806"
+    property color ink: "#d2ffe3"
+    property color muted: "#5fa37f"
+    property color accent: "#00e676"
+    property color cyan: "#00ff9c"
+    property color panel: "#06110b"
+    property color line: "#14402a"
     // Code font: Qt for WebAssembly bundles DejaVu Sans Mono.
     readonly property string mono: Qt.platform.os === "windows" ? "Consolas" : "DejaVu Sans Mono"
     property int page: 0
@@ -53,44 +54,15 @@ ApplicationWindow {
     readonly property bool signedIn: workspace.accountEmail.length > 0
     readonly property string accountName: signedIn ? workspace.accountEmail.split("@")[0] : ""
     readonly property string greeting: { const hour = new Date().getHours(); return hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening" }
-    // Developer workspace sample. Opt-in and labelled as sample data: it is static presentation
-    // content, not read from any project.
-    property bool devSample: false
     property int devTab: 0
-    readonly property var sampleTree: [
-        { name: "qt-sample-app", depth: 0, folder: true, changed: false },
-        { name: "cmake", depth: 1, folder: true, changed: false },
-        { name: "CMakeLists.txt", depth: 2, folder: false, changed: false },
-        { name: "src", depth: 1, folder: true, changed: false },
-        { name: "main.cpp", depth: 2, folder: false, changed: true },
-        { name: "qml", depth: 2, folder: true, changed: false },
-        { name: "Main.qml", depth: 3, folder: false, changed: true },
-        { name: "tests", depth: 1, folder: true, changed: false },
-        { name: "tst_main.cpp", depth: 2, folder: false, changed: false },
-        { name: "CMakeLists.txt", depth: 2, folder: false, changed: false }
-    ]
-    readonly property var sampleDiff: [
-        { path: "src/main.cpp", added: 3, removed: 0, hunk: "@@ -1,7 +1,10 @@", lines: [
-            [1, " ", "#include <QGuiApplication>"], [2, " ", "#include <QQmlApplicationEngine>"], [3, " ", "#include <QUrl>"],
-            [4, " ", "int main(int argc, char *argv[])"], [5, " ", "{"], [6, " ", "    QGuiApplication app(argc, argv);"],
-            [7, "+", "    app.setApplicationName(\"Mnaka Sample\");"], [8, "+", "    app.setOrganizationName(\"Mnaka\");"],
-            [9, "+", "    app.setOrganizationDomain(\"mnaka.example\");"], [10, " ", "    QQmlApplicationEngine engine;"]] },
-        { path: "qml/Main.qml", added: 4, removed: 2, hunk: "@@ -12,7 +12,9 @@ ApplicationWindow {", lines: [
-            [12, " ", "    width: 640"], [13, " ", "    height: 480"], [14, " ", "    visible: true"],
-            [15, "-", "    title: \"Qt Quick Application\""], [16, "-", "    color: \"#1e1e1e\""],
-            [15, "+", "    title: \"Mnaka Sample App\""], [16, "+", "    color: \"#101322\""],
-            [17, "+", "    property string statusText: \"Ready\""], [18, "+", "    MnakaStatusBar { id: statusBar; text: statusText }"],
-            [19, " ", "}"]] }
-    ]
-    readonly property var sampleChecklist: [
-        { title: "Inspect repository", detail: "Read project structure and key files.", done: true },
-        { title: "Prepare patch", detail: "Draft the proposed changes.", done: true },
-        { title: "Run tests", detail: "Build and test in an isolated sandbox.", done: true },
-        { title: "Await approval", detail: "Review the changes and apply when ready.", done: false }
-    ]
-    function lastReply() {
-        const list = workspace.messages
-        return list.length > 0 && list[list.length - 1].role === "assistant" ? list[list.length - 1].text : ""
+    function scrollBy(distance) {
+        const view = scroll.contentItem
+        view.contentY = Math.max(0, Math.min(view.contentY + distance, Math.max(0, scroll.contentHeight - scroll.height)))
+    }
+    function revealComposer() {
+        const bottom = composerBox.mapToItem(content, 0, composerBox.height).y + 56
+        const view = scroll.contentItem
+        if (bottom > view.contentY + scroll.height) view.contentY = Math.min(bottom - scroll.height, Math.max(0, scroll.contentHeight - scroll.height))
     }
     function capabilityFor(id) {
         const list = workspace.capabilities
@@ -105,19 +77,32 @@ ApplicationWindow {
     }
     WorkspaceModel { id: workspace }
     FileDialog {
+        id: projectPicker
+        title: "Add project files"
+        fileMode: FileDialog.OpenFiles
+        onAccepted: workspace.developer.addFiles(selectedFiles)
+    }
+    FileDialog {
+        id: projectSaver
+        property string path
+        title: "Save " + path
+        fileMode: FileDialog.SaveFile
+        onAccepted: workspace.developer.saveFile(path, selectedFile)
+    }
+    FileDialog {
         id: imagePicker
         title: "Select an image"
         nameFilters: ["Images (*.png *.jpg *.jpeg)"]
         onAccepted: workspace.selectImage(selectedFile)
     }
-    palette.window: "#070b18"
-    palette.base: "#101831"
+    palette.window: "#030806"
+    palette.base: "#071a10"
     palette.text: window.ink
     palette.windowText: window.ink
-    palette.button: "#18213d"
+    palette.button: "#0b2416"
     palette.buttonText: window.ink
     palette.highlight: window.accent
-    palette.highlightedText: "#ffffff"
+    palette.highlightedText: "#021006"
     palette.placeholderText: window.muted
 
     component Caption: Label {
@@ -125,18 +110,18 @@ ApplicationWindow {
         textFormat: Text.PlainText
     }
     component Heading: Label {
-        color: window.ink; font.pixelSize: 21; font.weight: Font.DemiBold
+        color: window.ink; font.pixelSize: 19; font.weight: Font.DemiBold
         wrapMode: Text.WordWrap; textFormat: Text.PlainText
     }
     component Card: Rectangle {
-        radius: 14; color: window.panel; border.color: window.line
+        radius: 2; color: window.panel; border.color: window.line
     }
     component Pill: Rectangle {
         id: pill
         property string text
         property color tint: window.cyan
         implicitWidth: pillLabel.implicitWidth + 22; implicitHeight: 26
-        radius: 13; color: Qt.rgba(tint.r, tint.g, tint.b, 0.14)
+        radius: 2; color: Qt.rgba(tint.r, tint.g, tint.b, 0.14)
         Label { id: pillLabel; anchors.centerIn: parent; text: pill.text; color: pill.tint; font.pixelSize: 11 }
     }
     component Icon: Shape {
@@ -158,28 +143,28 @@ ApplicationWindow {
         id: avatar
         property string letter
         property bool logo: false
-        implicitWidth: 36; implicitHeight: 36; radius: width / 2
-        color: "#1a2342"; border.color: "#2a3560"
+        implicitWidth: 36; implicitHeight: 36; radius: 2
+        color: "#0a2014"; border.color: "#1f5a3c"
         Label { visible: !avatar.logo; anchors.centerIn: parent; text: avatar.letter; color: window.ink; font.pixelSize: 14; font.weight: Font.DemiBold }
         Image { visible: avatar.logo; anchors.fill: parent; anchors.margins: 6; source: "assets/logo.png"; sourceSize: Qt.size(64, 64); fillMode: Image.PreserveAspectFit }
     }
     component PrimaryButton: Button {
         id: primary
         implicitHeight: 38; leftPadding: 18; rightPadding: 18
-        contentItem: Label { text: primary.text; color: "#ffffff"; font.weight: Font.DemiBold; font.pixelSize: 13; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-        background: Rectangle { radius: 9; color: !primary.enabled ? "#262d52" : primary.down ? "#4a50e0" : primary.hovered ? "#6b71ff" : window.accent; border.color: primary.activeFocus ? window.cyan : "transparent" }
+        contentItem: Label { text: primary.text; color: primary.enabled ? "#021006" : window.muted; font.weight: Font.DemiBold; font.pixelSize: 13; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+        background: Rectangle { radius: 2; color: !primary.enabled ? "#123322" : primary.down ? "#00b85c" : primary.hovered ? "#5dffa6" : window.accent; border.color: primary.activeFocus ? window.cyan : "transparent" }
     }
     component GhostButton: Button {
         id: ghost
         implicitHeight: 38; leftPadding: 16; rightPadding: 16
         contentItem: Label { text: ghost.text; color: ghost.enabled ? window.ink : window.muted; font.pixelSize: 13; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-        background: Rectangle { radius: 9; color: ghost.hovered ? "#172040" : "transparent"; border.color: ghost.activeFocus ? window.cyan : "#2a3560" }
+        background: Rectangle { radius: 2; color: ghost.hovered ? "#0b2015" : "transparent"; border.color: ghost.activeFocus ? window.cyan : "#1f5a3c" }
     }
     component Field: TextField {
         id: field
         color: window.ink; placeholderTextColor: window.muted; font.pixelSize: 14
         leftPadding: 12; rightPadding: 12; implicitHeight: 40
-        background: Rectangle { radius: 9; color: "#0a1022"; border.color: field.activeFocus ? window.accent : "#2a3560" }
+        background: Rectangle { radius: 2; color: "#020a06"; border.color: field.activeFocus ? window.accent : "#1f5a3c" }
     }
     component SectionTitle: RowLayout {
         id: section
@@ -188,9 +173,9 @@ ApplicationWindow {
         property int count: -1
         spacing: 10
         Icon { visible: section.icon.length > 0; path: section.icon.length > 0 ? section.icon : window.icons.check; tint: window.cyan }
-        Label { text: section.text; color: window.ink; font.pixelSize: 16; font.weight: Font.DemiBold }
+        Label { text: "[ " + section.text.toUpperCase() + " ]"; color: window.cyan; font.pixelSize: 13; font.weight: Font.DemiBold; font.letterSpacing: 1 }
         Rectangle {
-            visible: section.count >= 0; implicitWidth: 24; implicitHeight: 22; radius: 11; color: "#1a2342"
+            visible: section.count >= 0; implicitWidth: 24; implicitHeight: 22; radius: 2; color: "#0a2014"
             Label { anchors.centerIn: parent; text: String(section.count); color: window.muted; font.pixelSize: 11 }
         }
         Item { Layout.fillWidth: true }
@@ -207,20 +192,20 @@ ApplicationWindow {
                 strokeColor: "transparent"
                 fillGradient: RadialGradient {
                     centerX: orb.size / 2; centerY: orb.size / 2; focalX: centerX; focalY: centerY; centerRadius: orb.size / 2
-                    GradientStop { position: 0.0; color: "#663d7dff" }
-                    GradientStop { position: 0.62; color: "#2a3d5dff" }
-                    GradientStop { position: 1.0; color: "#003d5dff" }
+                    GradientStop { position: 0.0; color: "#6600e676" }
+                    GradientStop { position: 0.62; color: "#2a00a050" }
+                    GradientStop { position: 1.0; color: "#0000a050" }
                 }
                 PathAngleArc { centerX: orb.size / 2; centerY: orb.size / 2; radiusX: orb.size / 2; radiusY: orb.size / 2; startAngle: 0; sweepAngle: 360 }
             }
             ShapePath {
-                strokeColor: "#5587d4ff"; strokeWidth: 1
+                strokeColor: "#5500ff9c"; strokeWidth: 1
                 fillGradient: RadialGradient {
                     centerX: orb.size * 0.5; centerY: orb.size * 0.5; focalX: orb.size * 0.38; focalY: orb.size * 0.34; centerRadius: orb.size * 0.36
-                    GradientStop { position: 0.0; color: "#b4f1ff" }
-                    GradientStop { position: 0.3; color: "#3a9bff" }
-                    GradientStop { position: 0.68; color: "#5a3df0" }
-                    GradientStop { position: 1.0; color: "#1c1766" }
+                    GradientStop { position: 0.0; color: "#e6fff0" }
+                    GradientStop { position: 0.3; color: "#19e68c" }
+                    GradientStop { position: 0.68; color: "#0a7a48" }
+                    GradientStop { position: 1.0; color: "#02170c" }
                 }
                 PathAngleArc { centerX: orb.size / 2; centerY: orb.size / 2; radiusX: orb.size * 0.34; radiusY: orb.size * 0.34; startAngle: 0; sweepAngle: 360 }
             }
@@ -235,14 +220,13 @@ ApplicationWindow {
                     required property int modelData
                     anchors.fill: parent; rotation: modelData; preferredRendererType: Shape.CurveRenderer
                     ShapePath {
-                        strokeColor: swirl.modelData === 60 ? "#66d9c8ff" : "#55ffffff"; strokeWidth: 1.4; fillColor: "transparent"
+                        strokeColor: swirl.modelData === 60 ? "#6600ff9c" : "#55ffffff"; strokeWidth: 1.4; fillColor: "transparent"
                         PathAngleArc { centerX: swirl.width / 2; centerY: swirl.height / 2; radiusX: swirl.width / 2 - 1; radiusY: swirl.width * 0.2; startAngle: 0; sweepAngle: 360 }
                     }
                 }
             }
         }
     }
-    component SamplePill: Pill { text: "SAMPLE DATA"; tint: "#f5b544" }
     component DiffLine: Rectangle {
         id: diffLine
         required property var modelData
@@ -265,7 +249,7 @@ ApplicationWindow {
         property int destination
         readonly property var capability: window.capabilityFor(engineId)
         implicitHeight: engineColumn.implicitHeight + 28
-        color: engineButton.hovered ? "#101a33" : window.panel
+        color: engineButton.hovered ? "#0b2015" : window.panel
         ColumnLayout {
             id: engineColumn
             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 14; spacing: 6
@@ -279,32 +263,53 @@ ApplicationWindow {
             Caption { text: engine.detail; font.pixelSize: 12; Layout.fillWidth: true }
             RowLayout {
                 spacing: 7; Layout.topMargin: 2; Layout.fillWidth: true
-                Rectangle { implicitWidth: 8; implicitHeight: 8; radius: 4; color: engine.capability.enabled ? "#22c55e" : engine.capability.available ? window.cyan : "#56608a" }
+                Rectangle { implicitWidth: 8; implicitHeight: 8; radius: 4; color: engine.capability.enabled ? "#22c55e" : engine.capability.available ? window.cyan : "#2f5a44" }
                 Caption { text: engine.capability.enabled ? "Ready" : engine.capability.status; font.pixelSize: 12; color: engine.capability.enabled ? "#4ade80" : engine.capability.available ? window.cyan : window.muted; maximumLineCount: 2; elide: Text.ElideRight; Layout.fillWidth: true }
             }
         }
         Button {
             id: engineButton; anchors.fill: parent; flat: true; text: ""
             Accessible.name: "Open " + engine.name
-            background: Rectangle { color: "transparent"; radius: 14; border.color: engineButton.activeFocus ? window.cyan : "transparent" }
+            background: Rectangle { color: "transparent"; radius: 2; border.color: engineButton.activeFocus ? window.cyan : "transparent" }
             onClicked: window.page = engine.destination
         }
     }
     Shortcut { sequence: "Ctrl+L"; onActivated: { window.page = 0; composer.forceActiveFocus() } }
     Shortcut { sequence: "Escape"; onActivated: workspace.cancel() }
+    Shortcut { sequence: "PgDown"; onActivated: window.scrollBy(scroll.height * 0.85) }
+    Shortcut { sequence: "PgUp"; onActivated: window.scrollBy(-scroll.height * 0.85) }
+    Shortcut { sequence: "Ctrl+End"; onActivated: window.scrollBy(1e9) }
+    Shortcut { sequence: "Ctrl+Home"; onActivated: window.scrollBy(-1e9) }
+    onPageChanged: scroll.contentItem.contentY = 0
+    Connections {
+        target: workspace
+        // Keep the composer in view as the conversation grows.
+        function onMessagesChanged() { if (window.page === 0) Qt.callLater(window.revealComposer) }
+    }
 
+    Canvas {
+        anchors.fill: parent; opacity: 0.5
+        onPaint: {
+            const context = getContext("2d")
+            context.clearRect(0, 0, width, height)
+            context.fillStyle = "#0a00ff9c"
+            for (let y = 0; y < height; y += 4) context.fillRect(0, y, width, 1)
+        }
+        onWidthChanged: requestPaint()
+        onHeightChanged: requestPaint()
+    }
     RowLayout {
         anchors.fill: parent; spacing: 0
         Rectangle {
             Layout.preferredWidth: 224; Layout.fillHeight: true
-            visible: !window.compact; color: "#090e1d"
+            visible: !window.compact; color: "#040b07"
             Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: window.line }
             ColumnLayout {
                 anchors.fill: parent; anchors.margins: 14; spacing: 4
                 RowLayout {
                     spacing: 10; Layout.topMargin: 8; Layout.leftMargin: 8; Layout.bottomMargin: 22
                     Image { source: "assets/logo.png"; sourceSize: Qt.size(72, 72); Layout.preferredWidth: 34; Layout.preferredHeight: 34; fillMode: Image.PreserveAspectFit; Accessible.name: "MNAKA logo" }
-                    Label { text: "MNAKA"; color: window.ink; font.pixelSize: 20; font.weight: Font.Bold; font.letterSpacing: 1 }
+                    Label { text: "MNAKA"; color: window.cyan; font.pixelSize: 20; font.weight: Font.Bold; font.letterSpacing: 4 }
                 }
                 Repeater {
                     model: window.pages
@@ -318,14 +323,14 @@ ApplicationWindow {
                         onClicked: window.page = index
                         contentItem: RowLayout {
                             spacing: 14
-                            Icon { path: window.pageIcons[navButton.index]; tint: navButton.checked ? "#ffffff" : window.muted; Layout.leftMargin: 12 }
-                            Label { text: navButton.text; color: navButton.checked ? "#ffffff" : window.muted; font.pixelSize: 14; font.weight: navButton.checked ? Font.DemiBold : Font.Normal; Layout.fillWidth: true }
+                            Icon { path: window.pageIcons[navButton.index]; tint: navButton.checked ? window.cyan : window.muted; Layout.leftMargin: 12 }
+                            Label { text: (navButton.checked ? "> " : "  ") + navButton.text.toLowerCase().replace(/ /g, "_"); color: navButton.checked ? window.cyan : window.muted; font.pixelSize: 13; font.weight: navButton.checked ? Font.DemiBold : Font.Normal; Layout.fillWidth: true }
                         }
                         background: Rectangle {
-                            radius: 10; border.color: navButton.activeFocus ? window.cyan : "transparent"
-                            color: navButton.checked ? "transparent" : navButton.hovered ? "#111a33" : "transparent"
+                            radius: 2; border.color: navButton.activeFocus ? window.cyan : "transparent"
+                            color: navButton.checked ? "transparent" : navButton.hovered ? "#0b2015" : "transparent"
                             gradient: navButton.checked ? activeNav : null
-                            Gradient { id: activeNav; orientation: Gradient.Horizontal; GradientStop { position: 0; color: "#2a3190" } GradientStop { position: 1; color: "#1a2158" } }
+                            Gradient { id: activeNav; orientation: Gradient.Horizontal; GradientStop { position: 0; color: "#0e3a24" } GradientStop { position: 1; color: "#071a10" } }
                         }
                     }
                 }
@@ -345,30 +350,30 @@ ApplicationWindow {
                         }
                         Icon { path: window.icons.chevron; size: 14 }
                     }
-                    background: Rectangle { radius: 10; color: accountChip.hovered ? "#111a33" : "transparent"; border.color: accountChip.activeFocus ? window.cyan : "transparent" }
+                    background: Rectangle { radius: 2; color: accountChip.hovered ? "#0b2015" : "transparent"; border.color: accountChip.activeFocus ? window.cyan : "transparent" }
                 }
             }
         }
         ColumnLayout {
             Layout.fillWidth: true; Layout.fillHeight: true; spacing: 0
             Rectangle {
-                Layout.fillWidth: true; implicitHeight: 84; color: "#090e1d"
+                Layout.fillWidth: true; implicitHeight: 84; color: "#040b07"
                 Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: window.line }
                 RowLayout {
                     anchors.fill: parent; anchors.leftMargin: window.compact ? 14 : 22; anchors.rightMargin: window.compact ? 14 : 22; spacing: 14
                     ComboBox { visible: window.compact; model: window.pages; currentIndex: window.page; onActivated: window.page = currentIndex; Accessible.name: "Workspace screen"; Layout.preferredWidth: 150 }
                     ColumnLayout {
                         visible: !window.compact; spacing: 2; Layout.fillWidth: true
-                        Label { text: window.titles[window.page]; color: window.ink; font.pixelSize: 26; font.weight: Font.Bold; elide: Text.ElideRight; Layout.fillWidth: true }
-                        Caption { text: window.page === 2 ? (window.devSample ? "Sample Qt project · Illustration" : "No project open") : window.descriptions[window.page]; font.pixelSize: 14; elide: Text.ElideRight; wrapMode: Text.NoWrap; Layout.fillWidth: true }
+                        Label { text: "> " + window.titles[window.page].toUpperCase(); color: window.cyan; font.pixelSize: 22; font.weight: Font.Bold; font.letterSpacing: 2; elide: Text.ElideRight; Layout.fillWidth: true }
+                        Caption { text: window.page === 2 ? (workspace.developer.files.length > 0 ? workspace.developer.files.length + " file(s) in this session" : "No project files loaded") : window.descriptions[window.page]; font.pixelSize: 14; elide: Text.ElideRight; wrapMode: Text.NoWrap; Layout.fillWidth: true }
                     }
                     Item { visible: window.compact; Layout.fillWidth: true }
                     RowLayout {
                         visible: !window.compact; spacing: 8
-                        Rectangle { implicitWidth: 8; implicitHeight: 8; radius: 4; color: workspace.connected ? "#22c55e" : workspace.mockSession ? "#f5b544" : "#56608a" }
+                        Rectangle { implicitWidth: 8; implicitHeight: 8; radius: 4; color: workspace.connected ? "#22c55e" : workspace.mockSession ? "#f5b544" : "#2f5a44" }
                         Caption { text: workspace.connected ? "Connected" : workspace.mockSession ? "Mock session" : "Not connected" }
                     }
-                    Pill { text: "●  " + workspace.state; tint: workspace.busy ? "#b79cff" : window.cyan }
+                    Pill { text: "●  " + workspace.state; tint: workspace.busy ? "#ffb000" : window.cyan }
                     ComboBox { id: mode; model: ["Assistant", "Developer", "Autonomous"]; Layout.preferredWidth: 170; Accessible.name: "Workflow mode" }
                 }
             }
@@ -376,6 +381,10 @@ ApplicationWindow {
                 id: scroll
                 Layout.fillWidth: true; Layout.fillHeight: true
                 contentWidth: availableWidth
+                // Always visible and wide enough to grab whenever the page is taller than the view.
+                ScrollBar.vertical.policy: scroll.contentHeight > scroll.height ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                ScrollBar.vertical.width: 12
+                ScrollBar.vertical.minimumSize: 0.08
                 clip: true
                 ColumnLayout {
                     id: content
@@ -386,8 +395,8 @@ ApplicationWindow {
                     Card {
                         Layout.fillWidth: true; Layout.leftMargin: content.gutter; Layout.rightMargin: content.gutter
                         implicitHeight: statusText.implicitHeight + 24
-                        color: "#15132e"; border.color: "#2d2760"
-                        Caption { id: statusText; anchors.fill: parent; anchors.margins: 12; color: "#c3b8ee"; text: workspace.connected ? "Connected. Messages go to your own model through your account gateway. Conversations, memories, skills and rules are saved to your account as plain text." : workspace.mockSession ? "MOCK SESSION. Replies come from a deterministic fixture, not a reasoning model. Tasks run through the broker's fixture tools only: no files, applications or networks are touched, and nothing is saved when you close MNAKA." : (workspace.accountConfigured ? "Signed out. Sign in under Settings to use the assistant. Nothing is sent or saved while you are signed out." : "No account service is configured for this build, so the assistant is unavailable.") }
+                        color: "#071209"; border.color: "#1f5a3c"
+                        Caption { id: statusText; anchors.fill: parent; anchors.margins: 12; color: "#9be7b8"; text: workspace.connected ? "Connected. Messages go to your own model through your account gateway. Conversations, memories, skills and rules are saved to your account as plain text." : workspace.mockSession ? "MOCK SESSION. Replies come from a deterministic fixture, not a reasoning model. Tasks run through the broker's fixture tools only: no files, applications or networks are touched, and nothing is saved when you close MNAKA." : (workspace.accountConfigured ? "Signed out. Sign in under Settings to use the assistant. Nothing is sent or saved while you are signed out." : "No account service is configured for this build, so the assistant is unavailable.") }
                     }
                     GridLayout {
                         visible: window.page === 0
@@ -404,8 +413,17 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     ColumnLayout {
                                         spacing: 2; Layout.fillWidth: true
-                                        Heading { text: window.greeting + (window.signedIn ? ", " + window.accountName : ""); Layout.fillWidth: true }
-                                        Caption { text: "How can I help you today?"; font.pixelSize: 14 }
+                                        RowLayout {
+                                            spacing: 6; Layout.fillWidth: true
+                                            Heading { text: window.greeting + (window.signedIn ? ", " + window.accountName : ""); elide: Text.ElideRight; wrapMode: Text.NoWrap; Layout.maximumWidth: parent.width - 20 }
+                                            Rectangle {
+                                                id: caret
+                                                implicitWidth: 10; implicitHeight: 20; color: window.cyan
+                                                Timer { interval: 550; running: window.page === 0; repeat: true; onTriggered: caret.opacity = caret.opacity > 0.5 ? 0 : 1 }
+                                            }
+                                            Item { Layout.fillWidth: true }
+                                        }
+                                        Caption { text: "$ awaiting input"; font.pixelSize: 14 }
                                     }
                                     GhostButton { text: "Clear session"; onClicked: clearDialog.open() }
                                 }
@@ -418,13 +436,13 @@ ApplicationWindow {
                                         Layout.fillWidth: true; spacing: 10
                                         Avatar { letter: window.signedIn ? window.accountName.charAt(0).toUpperCase() : "Y"; logo: !message.mine; Layout.alignment: Qt.AlignTop }
                                         Rectangle {
-                                            Layout.fillWidth: true; radius: 12
-                                            color: message.mine ? "#1c2468" : "#101831"; border.color: message.mine ? "#2f3a94" : window.line
+                                            Layout.fillWidth: true; radius: 2
+                                            color: message.mine ? "#0b2a1a" : "#071a10"; border.color: message.mine ? "#1f7a4d" : window.line
                                             implicitHeight: bubble.implicitHeight + 24
                                             ColumnLayout {
                                                 id: bubble
                                                 anchors.fill: parent; anchors.margins: 12; spacing: 4
-                                                Label { text: message.mine ? "YOU" : message.modelData.mock ? "MNAKA · MOCK RESPONSE" : "MNAKA"; color: message.mine ? window.cyan : "#b79cff"; font.pixelSize: 10; font.weight: Font.Bold }
+                                                Label { text: message.mine ? "YOU" : message.modelData.mock ? "MNAKA · MOCK RESPONSE" : "MNAKA"; color: message.mine ? window.cyan : "#ffb000"; font.pixelSize: 10; font.weight: Font.Bold }
                                                 Label { text: message.modelData.text; textFormat: Text.PlainText; color: window.ink; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 14 }
                                             }
                                         }
@@ -439,22 +457,17 @@ ApplicationWindow {
                                 Caption { visible: workspace.streamingText.length > 0; text: workspace.streamingText; Layout.fillWidth: true; color: window.cyan }
                                 Caption { visible: workspace.notice.length > 0; text: workspace.notice; Layout.fillWidth: true }
                                 Item { Layout.fillHeight: true }
-                                Flow {
-                                    Layout.fillWidth: true; spacing: 8
-                                    GhostButton { text: "Traffic on the N1"; implicitHeight: 32; onClicked: { composer.text = "Mnaka, tell me about traffic on the N1"; composer.forceActiveFocus() } }
-                                    GhostButton { text: "Inspect a Qt project"; implicitHeight: 32; onClicked: { composer.text = "Inspect this Qt project and propose a fix"; composer.forceActiveFocus() } }
-                                    GhostButton { visible: workspace.mockSession; text: "Approval demo"; implicitHeight: 32; onClicked: { composer.text = "Mnaka, run the review demo"; composer.forceActiveFocus() } }
-                                }
                                 Rectangle {
+                                    id: composerBox
                                     Layout.fillWidth: true; implicitHeight: Math.min(160, Math.max(56, composer.implicitHeight + 16))
-                                    radius: 14; color: "#0a1022"; border.color: composer.activeFocus ? window.accent : "#2a3560"
+                                    radius: 2; color: "#020a06"; border.color: composer.activeFocus ? window.accent : "#1f5a3c"
                                     RowLayout {
                                         anchors.fill: parent; anchors.leftMargin: 6; anchors.rightMargin: 8; spacing: 6
                                         ScrollView {
                                             Layout.fillWidth: true; Layout.fillHeight: true
                                             TextArea {
                                                 id: composer
-                                                placeholderText: "Ask Mnaka…"; placeholderTextColor: window.muted
+                                                placeholderText: "> ask mnaka_"; placeholderTextColor: window.muted
                                                 color: window.ink; wrapMode: TextEdit.Wrap; font.pixelSize: 14
                                                 Accessible.name: "Message to MNAKA"
                                                 background: Rectangle { color: "transparent" }
@@ -473,10 +486,10 @@ ApplicationWindow {
                                             Accessible.name: workspace.busy ? "Cancel task" : "Send message"
                                             onClicked: { if (workspace.busy) workspace.cancel(); else if (workspace.submit(composer.text, mode.currentText)) composer.text = "" }
                                             contentItem: Item {
-                                                Icon { visible: !workspace.busy; anchors.centerIn: parent; path: window.icons.send; tint: "#ffffff"; size: 18 }
-                                                Rectangle { visible: workspace.busy; anchors.centerIn: parent; width: 12; height: 12; radius: 2; color: "#ffffff" }
+                                                Icon { visible: !workspace.busy; anchors.centerIn: parent; path: window.icons.send; tint: "#021006"; size: 18 }
+                                                Rectangle { visible: workspace.busy; anchors.centerIn: parent; width: 12; height: 12; radius: 2; color: "#021006" }
                                             }
-                                            background: Rectangle { radius: 20; color: !send.enabled ? "#262d52" : send.hovered ? "#6b71ff" : window.accent; border.color: send.activeFocus ? window.cyan : "transparent" }
+                                            background: Rectangle { radius: 2; color: !send.enabled ? "#123322" : send.hovered ? "#5dffa6" : window.accent; border.color: send.activeFocus ? window.cyan : "transparent" }
                                         }
                                     }
                                 }
@@ -487,7 +500,7 @@ ApplicationWindow {
                             Layout.fillWidth: true; Layout.preferredWidth: 540; Layout.minimumWidth: 0; Layout.alignment: Qt.AlignTop; spacing: 16
                             Card {
                                 Layout.fillWidth: true; Layout.fillHeight: true; implicitHeight: orbColumn.implicitHeight + 44
-                                gradient: Gradient { GradientStop { position: 0; color: "#0a1024" } GradientStop { position: 1; color: "#0d1430" } }
+                                gradient: Gradient { GradientStop { position: 0; color: "#030a06" } GradientStop { position: 1; color: "#071a10" } }
                                 ColumnLayout {
                                     id: orbColumn
                                     anchors.centerIn: parent; width: parent.width - 40; spacing: 6
@@ -526,7 +539,7 @@ ApplicationWindow {
                                         Rectangle {
                                             id: recent
                                             required property var modelData
-                                            Layout.fillWidth: true; radius: 10; color: "#0a1022"; border.color: window.line
+                                            Layout.fillWidth: true; radius: 2; color: "#020a06"; border.color: window.line
                                             implicitHeight: recentColumn.implicitHeight + 24
                                             ColumnLayout {
                                                 id: recentColumn
@@ -534,7 +547,7 @@ ApplicationWindow {
                                                 RowLayout {
                                                     Layout.fillWidth: true
                                                     Label { text: recent.modelData.title; textFormat: Text.PlainText; color: window.ink; font.pixelSize: 13; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.fillWidth: true }
-                                                    Pill { text: recent.modelData.state; tint: recent.modelData.state === "succeeded" ? "#4ade80" : recent.modelData.active ? "#b79cff" : window.muted }
+                                                    Pill { text: recent.modelData.state; tint: recent.modelData.state === "succeeded" ? "#4ade80" : recent.modelData.active ? "#ffb000" : window.muted }
                                                 }
                                                 Caption { text: recent.modelData.evidence; font.pixelSize: 12; Layout.fillWidth: true }
                                             }
@@ -544,7 +557,7 @@ ApplicationWindow {
                             }
                             Card {
                                 Layout.fillWidth: true; implicitHeight: approvalBrief.implicitHeight + 36
-                                border.color: workspace.approval.id !== undefined ? "#6a5bd0" : window.line
+                                border.color: workspace.approval.id !== undefined ? "#ffb000" : window.line
                                 ColumnLayout {
                                     id: approvalBrief
                                     anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 18; spacing: 10
@@ -575,7 +588,7 @@ ApplicationWindow {
                                             id: upcomingRule
                                             required property var modelData
                                             Layout.fillWidth: true; spacing: 10
-                                            Rectangle { implicitWidth: 3; implicitHeight: 34; radius: 2; color: upcomingRule.modelData.enabled ? window.accent : "#2a3560" }
+                                            Rectangle { implicitWidth: 3; implicitHeight: 34; radius: 2; color: upcomingRule.modelData.enabled ? window.accent : "#1f5a3c" }
                                             ColumnLayout {
                                                 spacing: 1; Layout.fillWidth: true
                                                 Label { text: upcomingRule.modelData.title; textFormat: Text.PlainText; color: window.ink; font.pixelSize: 13; elide: Text.ElideRight; Layout.fillWidth: true }
@@ -593,7 +606,7 @@ ApplicationWindow {
                         Card {
                             visible: workspace.approval.id !== undefined
                             Layout.fillWidth: true; implicitHeight: approvalContent.implicitHeight + 36
-                            border.color: "#6a5bd0"
+                            border.color: "#ffb000"
                             ColumnLayout {
                                 id: approvalContent; anchors.fill: parent; anchors.margins: 18; spacing: 10
                                 Heading { text: "Review this action"; Layout.fillWidth: true }
@@ -638,35 +651,48 @@ ApplicationWindow {
                         }
                     }
                     GridLayout {
+                        id: dev
+                        readonly property var session: workspace.developer
                         visible: window.page === 2
                         Layout.fillWidth: true; Layout.leftMargin: content.gutter; Layout.rightMargin: content.gutter
                         columns: window.wide ? 3 : window.compact ? 1 : 2
                         columnSpacing: 16; rowSpacing: 16
                         Card {
-                            Layout.fillWidth: true; Layout.fillHeight: !window.compact; Layout.preferredWidth: 240; Layout.minimumWidth: 0; Layout.alignment: Qt.AlignTop
+                            Layout.fillWidth: true; Layout.fillHeight: !window.compact; Layout.preferredWidth: 260; Layout.minimumWidth: 0; Layout.alignment: Qt.AlignTop
                             implicitHeight: treeColumn.implicitHeight + 32
                             ColumnLayout {
                                 id: treeColumn
-                                anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 16; spacing: 4
+                                anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 16; spacing: 6
+                                SectionTitle { text: "Project"; count: dev.session.files.length; Layout.fillWidth: true }
                                 RowLayout {
-                                    Layout.fillWidth: true; Layout.bottomMargin: 6
-                                    SectionTitle { text: "Project"; Layout.fillWidth: true }
-                                    SamplePill { visible: window.devSample }
-                                    GhostButton { text: window.devSample ? "Hide sample" : "Show sample"; implicitHeight: 30; onClicked: window.devSample = !window.devSample }
+                                    spacing: 8; Layout.bottomMargin: 4
+                                    PrimaryButton { text: "Add files"; implicitHeight: 32; enabled: !dev.session.busy; onClicked: dev.session.browserFiles ? dev.session.pickFiles() : projectPicker.open() }
+                                    GhostButton { text: "Clear"; implicitHeight: 32; enabled: dev.session.files.length > 0 && !dev.session.busy; onClicked: dev.session.clearProject() }
                                 }
-                                Caption { visible: !window.devSample; Layout.fillWidth: true; text: "No project open. Opening a project needs the project broker and PostgreSQL, which are not connected." }
+                                Caption { visible: dev.session.files.length === 0; Layout.fillWidth: true; text: "Add the text files a change concerns: up to 24 files, 64 KiB each. They stay in this session until you ask for a change; then they are sent to your model." }
                                 Repeater {
-                                    model: window.devSample ? window.sampleTree : []
+                                    model: dev.session.files
                                     Rectangle {
                                         id: node
                                         required property var modelData
-                                        Layout.fillWidth: true; implicitHeight: 30; radius: 6
-                                        color: node.modelData.changed ? "#131c3a" : "transparent"
+                                        Layout.fillWidth: true; implicitHeight: 34; radius: 2
+                                        color: node.modelData.proposed ? "#0b2416" : "transparent"
                                         RowLayout {
-                                            anchors.fill: parent; anchors.leftMargin: 6 + node.modelData.depth * 18; anchors.rightMargin: 8; spacing: 8
-                                            Icon { path: node.modelData.folder ? window.icons.folder : window.icons.file; size: 16; tint: node.modelData.folder ? window.muted : window.cyan }
-                                            Label { text: node.modelData.name; color: node.modelData.changed ? window.ink : window.muted; font.pixelSize: 13; elide: Text.ElideRight; Layout.fillWidth: true }
-                                            Rectangle { visible: node.modelData.changed; implicitWidth: 7; implicitHeight: 7; radius: 4; color: "#f5b544"; Accessible.name: "Changed" }
+                                            anchors.fill: parent; anchors.leftMargin: 6; anchors.rightMargin: 4; spacing: 8
+                                            Icon { path: window.icons.file; size: 16; tint: window.cyan }
+                                            Label { text: node.modelData.path; textFormat: Text.PlainText; color: node.modelData.proposed || node.modelData.unsaved ? window.ink : window.muted; font.pixelSize: 13; elide: Text.ElideMiddle; Layout.fillWidth: true }
+                                            Pill { visible: node.modelData.isNew === true; text: "NEW"; tint: "#f5b544"; implicitHeight: 20 }
+                                            Rectangle { visible: node.modelData.proposed && node.modelData.isNew !== true; implicitWidth: 7; implicitHeight: 7; radius: 4; color: "#f5b544"; Accessible.name: "Has proposed changes" }
+                                            GhostButton {
+                                                visible: node.modelData.unsaved; text: "Save"; implicitHeight: 26; leftPadding: 8; rightPadding: 8
+                                                Accessible.name: "Save " + node.modelData.path
+                                                onClicked: { if (dev.session.browserFiles) dev.session.saveFile(node.modelData.path); else { projectSaver.path = node.modelData.path; projectSaver.open() } }
+                                            }
+                                            GhostButton {
+                                                visible: node.modelData.isNew !== true; text: "×"; implicitHeight: 26; leftPadding: 8; rightPadding: 8
+                                                enabled: !dev.session.busy; Accessible.name: "Remove " + node.modelData.path
+                                                onClicked: dev.session.removeFile(node.modelData.path)
+                                            }
                                         }
                                     }
                                 }
@@ -689,9 +715,9 @@ ApplicationWindow {
                                             text: modelData; implicitHeight: 44; leftPadding: 22; rightPadding: 22
                                             checkable: true; checked: window.devTab === index
                                             onClicked: window.devTab = index
-                                            contentItem: Label { text: tab.text; color: tab.checked ? "#8f94ff" : window.muted; font.pixelSize: 13; font.weight: tab.checked ? Font.DemiBold : Font.Normal; verticalAlignment: Text.AlignVCenter }
+                                            contentItem: Label { text: tab.text; color: tab.checked ? "#00ff9c" : window.muted; font.pixelSize: 13; font.weight: tab.checked ? Font.DemiBold : Font.Normal; verticalAlignment: Text.AlignVCenter }
                                             background: Item {
-                                                Rectangle { anchors.fill: parent; color: tab.hovered ? "#101a33" : "transparent"; border.color: tab.activeFocus ? window.cyan : "transparent" }
+                                                Rectangle { anchors.fill: parent; color: tab.hovered ? "#0b2015" : "transparent"; border.color: tab.activeFocus ? window.cyan : "transparent" }
                                                 Rectangle { visible: tab.checked; anchors.bottom: parent.bottom; width: parent.width; height: 2; color: window.accent }
                                             }
                                         }
@@ -705,18 +731,20 @@ ApplicationWindow {
                                     RowLayout {
                                         Layout.fillWidth: true
                                         Label { text: "Proposed changes"; color: window.ink; font.pixelSize: 17; font.weight: Font.DemiBold; Layout.fillWidth: true }
-                                        SamplePill { visible: window.devSample }
-                                        Caption { visible: window.devSample; text: window.sampleDiff.length + " files changed" }
+                                        Caption { visible: dev.session.hasProposal; text: dev.session.proposal.length + " file(s) changed" }
                                     }
-                                    Caption { visible: !window.devSample; Layout.fillWidth: true; text: "No proposed changes. Project picker, indexing, diff, build logs and rollback require the project broker and PostgreSQL. Builds additionally require a tested OS sandbox. Native Windows execution remains disabled." }
-                                    Caption { visible: window.devSample; Layout.fillWidth: true; color: "#f5d28a"; text: "This is an illustration of how a proposed change will be reviewed. It was not read from, and will not be written to, any file on this device." }
+                                    Caption {
+                                        visible: !dev.session.hasProposal; Layout.fillWidth: true
+                                        text: dev.session.busy ? "Waiting for your model…" : dev.session.files.length === 0 ? "No proposed changes. Add project files, then describe the change you want below."
+                                            : "No proposed changes. Describe the change you want below; your model replies with edited files and the difference appears here."
+                                    }
                                     Repeater {
-                                        model: window.devSample ? window.sampleDiff : []
+                                        model: dev.session.proposal
                                         Rectangle {
                                             id: fileDiff
                                             required property var modelData
                                             property bool expanded: true
-                                            Layout.fillWidth: true; radius: 10; color: "#0a1022"; border.color: window.line; clip: true
+                                            Layout.fillWidth: true; radius: 2; color: "#020a06"; border.color: window.line; clip: true
                                             implicitHeight: fileColumn.implicitHeight + 2
                                             ColumnLayout {
                                                 id: fileColumn
@@ -730,20 +758,29 @@ ApplicationWindow {
                                                         spacing: 10
                                                         Icon { path: fileDiff.expanded ? window.icons.down : window.icons.chevron; size: 16; Layout.leftMargin: 10 }
                                                         Icon { path: window.icons.file; size: 16; tint: window.cyan }
-                                                        Label { text: fileDiff.modelData.path; color: window.ink; font.family: window.mono; font.pixelSize: 13; elide: Text.ElideMiddle; Layout.fillWidth: true }
-                                                        Label { text: "+" + fileDiff.modelData.added; color: "#4ade80"; font.family: window.mono; font.pixelSize: 13 }
-                                                        Label { text: "\u2212" + fileDiff.modelData.removed; color: "#f87171"; font.family: window.mono; font.pixelSize: 13; Layout.rightMargin: 14 }
+                                                        Label { text: fileDiff.modelData.path + (fileDiff.modelData.isNew ? "  (new file)" : ""); textFormat: Text.PlainText; color: window.ink; font.pixelSize: 13; elide: Text.ElideMiddle; Layout.fillWidth: true }
+                                                        Label { text: "+" + fileDiff.modelData.added; color: "#4ade80"; font.pixelSize: 13 }
+                                                        Label { text: "\u2212" + fileDiff.modelData.removed; color: "#f87171"; font.pixelSize: 13; Layout.rightMargin: 14 }
                                                     }
-                                                    background: Rectangle { color: fileHeader.hovered ? "#111a33" : "transparent"; border.color: fileHeader.activeFocus ? window.cyan : "transparent" }
-                                                }
-                                                Rectangle {
-                                                    visible: fileDiff.expanded; Layout.fillWidth: true; implicitHeight: 24; color: "#111a36"
-                                                    Label { anchors.verticalCenter: parent.verticalCenter; x: 70; text: fileDiff.modelData.hunk; color: "#7f9cf5"; font.family: window.mono; font.pixelSize: 12 }
+                                                    background: Rectangle { color: fileHeader.hovered ? "#0b2015" : "transparent"; border.color: fileHeader.activeFocus ? window.cyan : "transparent" }
                                                 }
                                                 Repeater {
-                                                    model: fileDiff.expanded ? fileDiff.modelData.lines : []
-                                                    DiffLine {}
+                                                    model: fileDiff.expanded ? fileDiff.modelData.hunks : []
+                                                    ColumnLayout {
+                                                        id: hunk
+                                                        required property var modelData
+                                                        Layout.fillWidth: true; spacing: 0
+                                                        Rectangle {
+                                                            Layout.fillWidth: true; implicitHeight: 24; color: "#082015"
+                                                            Label { anchors.verticalCenter: parent.verticalCenter; x: 70; text: hunk.modelData.header; color: "#4dd8a0"; font.pixelSize: 12 }
+                                                        }
+                                                        Repeater {
+                                                            model: hunk.modelData.lines
+                                                            DiffLine {}
+                                                        }
+                                                    }
                                                 }
+                                                Caption { visible: fileDiff.expanded && fileDiff.modelData.truncated; text: "Only the first 800 changed lines are shown. Applying uses the whole file."; Layout.margins: 10 }
                                                 Item { visible: fileDiff.expanded; implicitHeight: 6 }
                                             }
                                         }
@@ -765,27 +802,25 @@ ApplicationWindow {
                                 ColumnLayout {
                                     id: checklist
                                     anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 18; spacing: 12
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        SectionTitle { text: "Task checklist"; Layout.fillWidth: true }
-                                        SamplePill { visible: window.devSample }
-                                    }
-                                    Caption { visible: !window.devSample; Layout.fillWidth: true; text: "No developer task is running. Steps will appear here as a task inspects a project, prepares a patch and waits for your approval." }
+                                    SectionTitle { text: "Task checklist"; Layout.fillWidth: true }
                                     Repeater {
-                                        model: window.devSample ? window.sampleChecklist : []
+                                        model: dev.session.steps
                                         RowLayout {
                                             id: step
                                             required property var modelData
+                                            readonly property string state: modelData.state
                                             Layout.fillWidth: true; spacing: 12
                                             Rectangle {
                                                 Layout.alignment: Qt.AlignTop
-                                                implicitWidth: 26; implicitHeight: 26; radius: 13
-                                                color: step.modelData.done ? "#22c55e" : "transparent"; border.color: step.modelData.done ? "#22c55e" : "#7c6cf0"; border.width: 2
-                                                Icon { visible: step.modelData.done; anchors.centerIn: parent; path: window.icons.check; size: 15; weight: 2.4; tint: "#06240f" }
+                                                implicitWidth: 24; implicitHeight: 24; radius: 2
+                                                color: step.state === "done" ? "#22c55e" : "transparent"
+                                                border.color: step.state === "done" ? "#22c55e" : step.state === "active" ? window.cyan : step.state === "skipped" ? "#f5b544" : "#1f5a3c"; border.width: 2
+                                                Icon { visible: step.state === "done"; anchors.centerIn: parent; path: window.icons.check; size: 14; weight: 2.4; tint: "#021006" }
+                                                Label { visible: step.state === "skipped"; anchors.centerIn: parent; text: "–"; color: "#f5b544"; font.weight: Font.Bold }
                                             }
                                             ColumnLayout {
                                                 spacing: 2; Layout.fillWidth: true
-                                                Label { text: step.modelData.title; color: window.ink; font.pixelSize: 14; font.weight: Font.DemiBold }
+                                                Label { text: step.modelData.title; color: step.state === "pending" ? window.muted : window.ink; font.pixelSize: 14; font.weight: Font.DemiBold }
                                                 Caption { text: step.modelData.detail; Layout.fillWidth: true }
                                             }
                                         }
@@ -793,19 +828,21 @@ ApplicationWindow {
                                 }
                             }
                             Card {
-                                visible: window.devSample
+                                visible: dev.session.hasProposal || dev.session.summary.length > 0
                                 Layout.fillWidth: true; implicitHeight: review.implicitHeight + 36
                                 ColumnLayout {
                                     id: review
                                     anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 18; spacing: 12
                                     SectionTitle { text: "Review before applying"; Layout.fillWidth: true }
-                                    Caption { Layout.fillWidth: true; font.pixelSize: 14; text: "These changes add application metadata and a status bar to the main window." }
-                                    PrimaryButton { text: "Apply changes"; enabled: false; Layout.fillWidth: true; implicitHeight: 44 }
-                                    Caption { Layout.fillWidth: true; font.pixelSize: 12; text: "Applying is unavailable: there is no project to change, and no project broker or sandbox is connected." }
+                                    Caption { text: "YOUR MODEL'S SUMMARY, NOT VERIFIED"; font.pixelSize: 10; font.letterSpacing: 1; color: "#f5b544" }
+                                    Label { Layout.fillWidth: true; text: dev.session.summary.length > 0 ? dev.session.summary : "The model gave no summary."; textFormat: Text.PlainText; color: window.ink; wrapMode: Text.WordWrap; font.pixelSize: 14 }
+                                    PrimaryButton { text: "Apply changes"; enabled: dev.session.hasProposal && !dev.session.busy; Layout.fillWidth: true; implicitHeight: 44; onClicked: dev.session.applyProposal() }
+                                    GhostButton { text: "Discard"; enabled: dev.session.hasProposal && !dev.session.busy; Layout.fillWidth: true; onClicked: dev.session.discardProposal() }
+                                    Caption { Layout.fillWidth: true; font.pixelSize: 12; text: "Applying updates the copies in this session. Nothing on your device changes until you save a file." }
                                 }
                             }
                             Card {
-                                visible: window.devSample
+                                visible: dev.session.hasProposal
                                 Layout.fillWidth: true; implicitHeight: summary.implicitHeight + 36
                                 ColumnLayout {
                                     id: summary
@@ -814,14 +851,14 @@ ApplicationWindow {
                                     RowLayout {
                                         Layout.fillWidth: true; spacing: 10
                                         Icon { path: window.icons.file; size: 18 }
-                                        Label { text: window.sampleDiff.length + " files changed"; color: window.ink; font.pixelSize: 14; Layout.fillWidth: true }
-                                        Label { text: "+" + (window.sampleDiff[0].added + window.sampleDiff[1].added); color: "#4ade80"; font.family: window.mono; font.pixelSize: 14 }
-                                        Label { text: "\u2212" + (window.sampleDiff[0].removed + window.sampleDiff[1].removed); color: "#f87171"; font.family: window.mono; font.pixelSize: 14 }
+                                        Label { text: dev.session.proposal.length + " file(s) changed"; color: window.ink; font.pixelSize: 14; Layout.fillWidth: true }
+                                        Label { text: "+" + dev.session.added; color: "#4ade80"; font.pixelSize: 14 }
+                                        Label { text: "\u2212" + dev.session.removed; color: "#f87171"; font.pixelSize: 14 }
                                     }
                                     RowLayout {
                                         Layout.fillWidth: true; spacing: 10
                                         Icon { path: window.icons.info; size: 18; tint: "#f5b544"; Layout.alignment: Qt.AlignTop }
-                                        Caption { text: "Sample data. No build or test has run."; Layout.fillWidth: true }
+                                        Caption { text: "No build or test has run on these changes."; Layout.fillWidth: true }
                                     }
                                 }
                             }
@@ -834,34 +871,27 @@ ApplicationWindow {
                         ColumnLayout {
                             id: promptColumn
                             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 12; spacing: 8
-                            Caption {
-                                readonly property string reply: window.lastReply()
-                                visible: text.length > 0; Layout.fillWidth: true
-                                color: workspace.streamingText.length > 0 ? window.cyan : window.muted
-                                text: workspace.streamingText.length > 0 ? workspace.streamingText : workspace.notice.length > 0 ? workspace.notice : reply
-                            }
+                            Caption { visible: text.length > 0; Layout.fillWidth: true; color: "#f5d28a"; text: workspace.developer.notice }
                             RowLayout {
                                 Layout.fillWidth: true; spacing: 10
                                 Field {
                                     id: devPrompt
-                                    Layout.fillWidth: true; implicitHeight: 44
-                                    placeholderText: "Ask Mnaka about this project…"
-                                    Accessible.name: "Developer request to MNAKA"
-                                    onAccepted: { if (workspace.submit(text, "Developer")) clear() }
+                                    Layout.fillWidth: true; implicitHeight: 44; maximumLength: 4000
+                                    placeholderText: "> describe the change you want_"
+                                    Accessible.name: "Change request"
+                                    onAccepted: { workspace.developer.request(text); if (workspace.developer.busy) clear() }
                                 }
                                 Button {
                                     id: devSend
                                     implicitWidth: 44; implicitHeight: 44
-                                    enabled: workspace.busy || devPrompt.text.trim().length > 0
-                                    Accessible.name: workspace.busy ? "Cancel task" : "Send developer request"
-                                    onClicked: { if (workspace.busy) workspace.cancel(); else if (workspace.submit(devPrompt.text, "Developer")) devPrompt.clear() }
-                                    contentItem: Item {
-                                        Icon { visible: !workspace.busy; anchors.centerIn: parent; path: window.icons.send; tint: "#ffffff"; size: 18 }
-                                        Rectangle { visible: workspace.busy; anchors.centerIn: parent; width: 12; height: 12; radius: 2; color: "#ffffff" }
-                                    }
-                                    background: Rectangle { radius: 22; color: !devSend.enabled ? "#262d52" : devSend.hovered ? "#6b71ff" : window.accent; border.color: devSend.activeFocus ? window.cyan : "transparent" }
+                                    enabled: !workspace.developer.busy && devPrompt.text.trim().length > 0
+                                    Accessible.name: "Send change request"
+                                    onClicked: { workspace.developer.request(devPrompt.text); if (workspace.developer.busy) devPrompt.clear() }
+                                    contentItem: Item { Icon { anchors.centerIn: parent; path: window.icons.send; tint: "#021006"; size: 18 } }
+                                    background: Rectangle { radius: 2; color: !devSend.enabled ? "#123322" : devSend.hovered ? "#5dffa6" : window.accent; border.color: devSend.activeFocus ? window.cyan : "transparent" }
                                 }
                             }
+                            Caption { Layout.fillWidth: true; font.pixelSize: 11; text: workspace.connected ? "Sending a request sends every file in the project to your model through your account gateway. File contents are not stored; the request and the model's summary are added to your conversation." : "Sign in under Settings to ask for a change. Files you add stay in this session." }
                         }
                     }
                     Card {
@@ -909,7 +939,7 @@ ApplicationWindow {
                                 Rectangle {
                                     id: memoryRow
                                     required property var modelData
-                                    Layout.fillWidth: true; radius: 10; color: "#0a1022"; border.color: window.line
+                                    Layout.fillWidth: true; radius: 2; color: "#020a06"; border.color: window.line
                                     implicitHeight: memoryRowLayout.implicitHeight + 20
                                     RowLayout {
                                         id: memoryRowLayout
@@ -946,7 +976,7 @@ ApplicationWindow {
                                 Rectangle {
                                     id: ruleRow
                                     required property var modelData
-                                    Layout.fillWidth: true; radius: 10; color: "#0a1022"; border.color: window.line
+                                    Layout.fillWidth: true; radius: 2; color: "#020a06"; border.color: window.line
                                     implicitHeight: ruleRowLayout.implicitHeight + 16
                                     RowLayout {
                                         id: ruleRowLayout
@@ -972,7 +1002,7 @@ ApplicationWindow {
                             Caption { text: "Paste your JSON manifest. Checks run locally; inspection grants no permissions."; Layout.fillWidth: true }
                             Rectangle {
                                 Layout.fillWidth: true; Layout.preferredHeight: 240
-                                radius: 10; color: "#0a1022"; border.color: skillEditor.activeFocus ? window.accent : "#2a3560"
+                                radius: 2; color: "#020a06"; border.color: skillEditor.activeFocus ? window.accent : "#1f5a3c"
                                 ScrollView {
                                     anchors.fill: parent; anchors.margins: 4
                                     TextArea {
@@ -1000,7 +1030,7 @@ ApplicationWindow {
                                 Rectangle {
                                     id: skillRow
                                     required property var modelData
-                                    Layout.fillWidth: true; radius: 10; color: "#0a1022"; border.color: window.line
+                                    Layout.fillWidth: true; radius: 2; color: "#020a06"; border.color: window.line
                                     implicitHeight: skillRowLayout.implicitHeight + 16
                                     RowLayout {
                                         id: skillRowLayout

@@ -6,6 +6,7 @@
 #include <QTcpSocket>
 #include <QUrlQuery>
 #include "apps/client/WorkspaceModel.h"
+#include "engines/software/LineDiff.h"
 
 // Loopback stand-in for the Supabase project: Auth, the Data API tables and the assistant function.
 class FakeProject : public QTcpServer {
@@ -13,7 +14,8 @@ public:
     QStringList calls;
     QJsonArray history;
     int assistantStatus = 200;
-    QJsonObject lastAssistantBody;
+    QJsonObject lastAssistantBody, lastDeveloperBody, developerReply;
+    int developerStatus = 200;
     QByteArray lastAuthorization;
     FakeProject() {
         listen(QHostAddress::LocalHost);
@@ -47,6 +49,9 @@ public:
                     lastAssistantBody = body; status = assistantStatus;
                     answer = QJsonDocument(status == 200 ? QJsonObject{{"text", "Reply to: " + body["text"].toString()}, {"model", "test-model"}, {"saved", true}}
                         : QJsonObject{{"code", "PROVIDER_UNAVAILABLE"}, {"message", "down"}});
+                } else if (path == "/functions/v1/developer") {
+                    lastDeveloperBody = body; status = developerStatus;
+                    answer = QJsonDocument(status == 200 ? developerReply : QJsonObject{{"code", "PROVIDER_UNAVAILABLE"}});
                 } else if (verb == "GET") answer = QJsonDocument(path.endsWith("mnaka_messages") ? history : QJsonArray{});
                 else if (verb == "POST") {
                     status = 201; auto row = body; row["id"] = QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -192,6 +197,118 @@ private slots:
         QCOMPARE(decoded.size(), QSize(1024, 512));
         model.clearImage();
         QVERIFY(model.imageAnswer().isEmpty());
+    }
+    void lineDiffReportsExactChanges() {
+        const auto same = mnaka::diffLines("a\nb\n", "a\nb\n");
+        QVERIFY(same.hunks.isEmpty() && same.added == 0 && same.removed == 0);
+        QString before, after;
+        for (int i = 1; i <= 20; ++i) { before += QString("line %1\n").arg(i); after += i == 10 ? QString("changed\nextra\n") : QString("line %1\n").arg(i); }
+        const auto diff = mnaka::diffLines(before, after);
+        QCOMPARE(diff.added, 2); QCOMPARE(diff.removed, 1);
+        QCOMPARE(diff.hunks.size(), 1);
+        QCOMPARE(diff.hunks.first().header(), QString("@@ -7,7 +7,8 @@"));
+        QCOMPARE(diff.hunks.first().lines.size(), 9); // three before, one removed, two added, three after
+        QCOMPARE(diff.hunks.first().lines[3].sign, QChar('-')); QCOMPARE(diff.hunks.first().lines[3].number, 10);
+        QCOMPARE(diff.hunks.first().lines[5].text, QString("extra")); QCOMPARE(diff.hunks.first().lines[5].number, 11);
+        const auto created = mnaka::diffLines("", "x\ny\n");
+        QCOMPARE(created.added, 2); QCOMPARE(created.hunks.first().header(), QString("@@ -0,0 +1,2 @@"));
+        const auto far = mnaka::diffLines(before, QString(before).replace("line 2\n", "two\n").replace("line 19\n", "nineteen\n"));
+        QCOMPARE(far.hunks.size(), 2);
+        QCOMPARE(mnaka::diffLines("a\r\nb\r\n", "a\nb\n").hunks.size(), 0); // line endings alone are not a change
+    }
+    void developerRejectsUnsafeFilesAndModelOutput() {
+        DeveloperSession session;
+        QVERIFY(session.addFile("main.cpp", "int main() { return 0; }\n").isEmpty());
+        QVERIFY(!session.addFile("main.cpp", "again").isEmpty());
+        QVERIFY(!session.addFile("../secret.txt", "x").isEmpty());
+        QVERIFY(!session.addFile("dir/file.txt", "x").isEmpty());
+        QVERIFY(!session.addFile("binary.bin", QByteArray("a\0b", 3)).isEmpty());
+        QVERIFY(!session.addFile("latin1.txt", QByteArray("caf\xe9")).isEmpty());
+        QVERIFY(!session.addFile("big.txt", QByteArray(65537, 'x')).isEmpty());
+        QCOMPARE(session.files().size(), 1);
+
+        const QMap<QString, QString> files{{"main.cpp", "int main() { return 0; }\n"}};
+        QMap<QString, QString> changes; QString summary;
+        const auto file = [](const QString &path, const QJsonValue &content) { return QJsonObject{{"path", path}, {"content", content}}; };
+        QVERIFY(!DeveloperSession::readProposal({{"summary", "x"}}, files, changes, summary).isEmpty());
+        QVERIFY(!DeveloperSession::readProposal({{"files", QJsonArray{file("../../etc/passwd", "x")}}}, files, changes, summary).isEmpty());
+        QVERIFY(!DeveloperSession::readProposal({{"files", QJsonArray{file("C:\\x.txt", "x")}}}, files, changes, summary).isEmpty());
+        QVERIFY(!DeveloperSession::readProposal({{"files", QJsonArray{file("main.cpp", 5)}}}, files, changes, summary).isEmpty());
+        QVERIFY(!DeveloperSession::readProposal({{"files", QJsonArray{file("main.cpp", QString(70000, 'x'))}}}, files, changes, summary).isEmpty());
+        QVERIFY(!DeveloperSession::readProposal({{"files", QJsonArray{file("a.txt", "1"), file("a.txt", "2")}}}, files, changes, summary).isEmpty());
+        QVERIFY(DeveloperSession::readProposal({{"summary", "none"}, {"files", QJsonArray{file("main.cpp", "int main() { return 0; }\n")}}}, files, changes, summary).isEmpty());
+        QVERIFY(changes.isEmpty()); // identical content is not a change
+        QCOMPARE(summary, QString("none"));
+
+        session.request("do something"); // signed out: nothing is sent
+        QVERIFY(session.notice().contains("Sign in"));
+        QVERIFY(!session.busy());
+    }
+    void developerRequestDiffApplyAndSave() {
+        FakeProject project; project.configure();
+        QTemporaryDir directory;
+        const auto source = directory.filePath("main.cpp");
+        { QFile file(source); QVERIFY(file.open(QIODevice::WriteOnly)); file.write("#include <cstdio>\nint main()\n{\n    return 0;\n}\n"); }
+        WorkspaceModel model;
+        auto *dev = model.developer();
+        dev->addFiles({QUrl::fromLocalFile(source), QUrl::fromLocalFile(directory.filePath("missing.txt"))});
+        QCOMPARE(dev->files().size(), 1);
+        QVERIFY(dev->notice().contains("missing.txt"));
+        QCOMPARE(dev->steps().first().toMap()["state"].toString(), QString("done"));
+        QCOMPARE(dev->steps()[3].toMap()["state"].toString(), QString("skipped")); // tests are never claimed
+
+        model.signIn("user@example.test", "password");
+        QTRY_VERIFY(model.connected());
+        project.developerReply = {{"summary", "Prints a greeting and adds a notes file."}, {"files", QJsonArray{
+            QJsonObject{{"path", "main.cpp"}, {"content", "#include <cstdio>\nint main()\n{\n    std::puts(\"hello\");\n    return 0;\n}\n"}},
+            QJsonObject{{"path", "NOTES.md"}, {"content", "# Notes\n"}}}}};
+        dev->request("Print hello");
+        QVERIFY(dev->busy());
+        QTRY_VERIFY(!dev->busy());
+        QCOMPARE(project.lastDeveloperBody["request"].toString(), QString("Print hello"));
+        QCOMPARE(project.lastDeveloperBody["files"].toArray().size(), 1);
+        QCOMPARE(project.lastDeveloperBody["files"].toArray().first().toObject()["path"].toString(), QString("main.cpp")); // name only, no folder
+        QVERIFY(dev->hasProposal());
+        QCOMPARE(dev->proposal().size(), 2);
+        QCOMPARE(dev->added(), 2); QCOMPARE(dev->removed(), 0);
+        QCOMPARE(dev->summary(), QString("Prints a greeting and adds a notes file."));
+        QCOMPARE(dev->files().size(), 2); // the proposed new file is listed, marked new
+        // Nothing has changed yet.
+        { QFile file(source); QVERIFY(file.open(QIODevice::ReadOnly)); QVERIFY(!file.readAll().contains("hello")); }
+
+        dev->applyProposal();
+        QVERIFY(!dev->hasProposal());
+        QCOMPARE(dev->steps().last().toMap()["state"].toString(), QString("done"));
+        int unsaved = 0;
+        for (const auto &value : dev->files()) if (value.toMap()["unsaved"].toBool()) ++unsaved;
+        QCOMPARE(unsaved, 2);
+        // Still nothing on disk until the user saves.
+        { QFile file(source); QVERIFY(file.open(QIODevice::ReadOnly)); QVERIFY(!file.readAll().contains("hello")); }
+        const auto target = directory.filePath("out.cpp");
+        dev->saveFile("main.cpp", QUrl::fromLocalFile(target));
+        { QFile file(target); QVERIFY(file.open(QIODevice::ReadOnly)); QVERIFY(file.readAll().contains("std::puts(\"hello\")")); }
+
+        // A refused or malformed reply leaves the project untouched.
+        project.developerStatus = 503;
+        dev->request("Another change");
+        QTRY_VERIFY(!dev->busy());
+        QVERIFY(!dev->hasProposal() && dev->notice().contains("not available"));
+        project.developerStatus = 200;
+        project.developerReply = {{"summary", "x"}, {"files", QJsonArray{QJsonObject{{"path", "../evil.sh"}, {"content", "rm -rf"}}}}};
+        dev->request("Another change");
+        QTRY_VERIFY(!dev->busy());
+        QVERIFY(!dev->hasProposal());
+        QCOMPARE(dev->files().size(), 2);
+
+        project.developerReply = {{"summary", "ok"}, {"files", QJsonArray{QJsonObject{{"path", "NOTES.md"}, {"content", "# Notes\nmore\n"}}}}};
+        dev->request("Extend notes");
+        QTRY_VERIFY(dev->hasProposal());
+        dev->discardProposal();
+        QVERIFY(!dev->hasProposal());
+        model.signOut();
+        dev->request("x");
+        QVERIFY(dev->notice().contains("Sign in"));
+        QCOMPARE(dev->files().size(), 2); // files survive sign-out; they never left this object
     }
 };
 QTEST_MAIN(LiveTests)

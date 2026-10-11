@@ -2,7 +2,7 @@
 qt_add_library(mnaka_client_module STATIC)
 set_source_files_properties(qml/Main.qml PROPERTIES QT_RESOURCE_ALIAS Main.qml)
 # The module sits under the build root so editor tooling resolves the import.
-qt_add_qml_module(mnaka_client_module URI Mnaka.App VERSION 1.0 OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Mnaka/App QML_FILES qml/Main.qml RESOURCES assets/logo.png SOURCES WorkspaceModel.h WorkspaceModel.cpp)
+qt_add_qml_module(mnaka_client_module URI Mnaka.App VERSION 1.0 OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Mnaka/App QML_FILES qml/Main.qml RESOURCES assets/logo.png SOURCES WorkspaceModel.h WorkspaceModel.cpp DeveloperSession.h DeveloperSession.cpp)
 # Main.qml is large: compiling every binding to C++ overflows MinGW's object format and takes
 # many minutes for WebAssembly. Bytecode alone loads just as early and compiles in seconds.
 set_target_properties(mnaka_client_module PROPERTIES QT_QMLCACHEGEN_ARGUMENTS "--only-bytecode")

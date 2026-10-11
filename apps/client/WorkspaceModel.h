@@ -8,6 +8,7 @@
 #include <QtQml/qqmlregistration.h>
 #include <functional>
 #include <memory>
+#include "apps/client/DeveloperSession.h"
 
 namespace mnaka {
 class TaskOrchestrator;
@@ -52,6 +53,7 @@ class WorkspaceModel : public QObject {
     Q_PROPERTY(bool skillSavable READ skillSavable NOTIFY skillReportChanged)
     Q_PROPERTY(QString imageAnswer READ imageAnswer NOTIFY imageChanged)
     Q_PROPERTY(bool imageInterpreting READ imageInterpreting NOTIFY imageChanged)
+    Q_PROPERTY(DeveloperSession *developer READ developer CONSTANT)
     // Fixture session for automated tests and --mock-session; the application has no switch for it.: mock provider, fixture broker tools, nothing persisted.
     Q_PROPERTY(bool mockSession READ mockSession WRITE setMockSession NOTIFY changed)
 public:
@@ -76,6 +78,7 @@ public:
     bool accountBusy() const;
     QString accountNotice() const { return m_accountNotice; }
     bool connected() const { return m_live; }
+    DeveloperSession *developer() const { return m_developer; }
     QVariantList memories() const { return m_memories; }
     QVariantList skills() const { return m_skills; }
     QVariantList rules() const { return m_rules; }
@@ -133,6 +136,7 @@ private:
     mnaka::SupabaseAuth *m_auth = nullptr;
     QString m_accountNotice;
     mnaka::SupabaseData *m_data = nullptr;
+    DeveloperSession *m_developer;
     std::shared_ptr<mnaka::SessionToken> m_token;
     bool m_mock = false, m_live = false, m_imageInterpreting = false;
     quint64 m_sessionGeneration = 0;
