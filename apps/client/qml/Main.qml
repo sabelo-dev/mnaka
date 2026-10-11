@@ -45,6 +45,7 @@ ApplicationWindow {
         calendar: "M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z M16 2v4 M8 2v4 M3 10h18",
         chevron: "M9 18l6-6-6-6",
         check: "M20 6L9 17l-5-5",
+        mic: "M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z M19 10v2a7 7 0 0 1-14 0v-2 M12 19v3 M8 22h8",
         file: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6",
         down: "M6 9l6 6 6-6",
         ring: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z",
@@ -55,6 +56,19 @@ ApplicationWindow {
     readonly property string accountName: signedIn ? workspace.accountEmail.split("@")[0] : ""
     readonly property string greeting: { const hour = new Date().getHours(); return hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening" }
     property int devTab: 0
+    // A finished utterance: a few spoken commands act locally, anything else is sent as a message.
+    function handleVoice(spoken) {
+        const said = spoken.toLowerCase().replace(/[.,!?]/g, "").trim()
+        const screens = { "overview": 0, "home": 0, "command centre": 0, "command center": 0, "tasks": 1, "developer": 2, "developer workspace": 2,
+            "computer control": 3, "control": 3, "skills": 4, "projects": 5, "memory": 5, "vision": 6, "proactive": 7, "rules": 7, "settings": 8 }
+        const go = said.match(/^(?:open|go to|show|switch to)\s+(?:the\s+)?(.+)$/)
+        if (go && screens[go[1]] !== undefined) { window.page = screens[go[1]]; window.voiceNotice = "Opened " + window.pages[window.page] + "."; return }
+        if (said === "cancel" || said === "stop" || said === "cancel task") { workspace.cancel(); window.voiceNotice = "Cancel requested."; return }
+        window.voiceNotice = ""
+        window.page = 0
+        if (!workspace.submit(spoken, mode.currentText)) composer.text = spoken // keep what was said so it can be sent later
+    }
+    property string voiceNotice: ""
     function scrollBy(distance) {
         const view = scroll.contentItem
         view.contentY = Math.max(0, Math.min(view.contentY + distance, Math.max(0, scroll.contentHeight - scroll.height)))
@@ -282,6 +296,10 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+Home"; onActivated: window.scrollBy(-1e9) }
     onPageChanged: scroll.contentItem.contentY = 0
     Connections {
+        target: workspace.voice
+        function onRecognized(text) { window.handleVoice(text) }
+    }
+    Connections {
         target: workspace
         // Keep the composer in view as the conversation grows.
         function onMessagesChanged() { if (window.page === 0) Qt.callLater(window.revealComposer) }
@@ -480,6 +498,15 @@ ApplicationWindow {
                                             }
                                         }
                                         Button {
+                                            id: talk
+                                            visible: workspace.voice.available
+                                            implicitWidth: 40; implicitHeight: 40
+                                            Accessible.name: workspace.voice.listening ? "Stop listening" : "Speak a message"
+                                            onClicked: workspace.voice.listening ? workspace.voice.stop() : workspace.voice.start()
+                                            contentItem: Item { Icon { anchors.centerIn: parent; path: window.icons.mic; tint: workspace.voice.listening ? "#021006" : window.cyan; size: 18 } }
+                                            background: Rectangle { radius: 2; color: workspace.voice.listening ? "#ffb000" : talk.hovered ? "#0b2015" : "transparent"; border.color: talk.activeFocus || !workspace.voice.listening ? "#1f5a3c" : "#ffb000" }
+                                        }
+                                        Button {
                                             id: send
                                             implicitWidth: 40; implicitHeight: 40
                                             enabled: workspace.busy || composer.text.trim().length > 0
@@ -504,9 +531,30 @@ ApplicationWindow {
                                 ColumnLayout {
                                     id: orbColumn
                                     anchors.centerIn: parent; width: parent.width - 40; spacing: 6
-                                    Orb { Layout.alignment: Qt.AlignHCenter; active: workspace.busy; size: window.compact ? 170 : 230 }
-                                    Label { Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 6; text: workspace.busy ? workspace.state : workspace.connected ? "Ready" : workspace.mockSession ? "Mock session ready" : "Not connected"; color: window.ink; font.pixelSize: 19; font.weight: Font.DemiBold }
-                                    Caption { Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; text: workspace.state === "Awaiting approval" ? "Review the requested action under Approval required." : workspace.busy ? "Working on your request." : workspace.connected ? "Type a message to talk to your model. Voice input is unavailable." : workspace.mockSession ? "Type a message to run a fixture task. Voice input is unavailable." : "Sign in under Settings to connect. Voice input is unavailable." }
+                                    Orb { Layout.alignment: Qt.AlignHCenter; active: workspace.busy || workspace.voice.listening; size: window.compact ? 170 : 230 }
+                                    Label { Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 6; text: workspace.voice.listening ? "Listening…" : workspace.busy ? workspace.state : workspace.connected ? (workspace.voice.available ? "Ready to listen" : "Ready") : workspace.mockSession ? "Mock session ready" : "Not connected"; color: workspace.voice.listening ? "#ffb000" : window.ink; font.pixelSize: 19; font.weight: Font.DemiBold }
+                                    Caption {
+                                        Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter
+                                        color: workspace.voice.listening && workspace.voice.partial.length > 0 ? window.ink : window.muted
+                                        text: workspace.voice.listening ? (workspace.voice.partial.length > 0 ? workspace.voice.partial : "Speak now. Press the microphone again to finish.")
+                                            : workspace.voice.notice.length > 0 ? workspace.voice.notice
+                                            : window.voiceNotice.length > 0 ? window.voiceNotice
+                                            : workspace.state === "Awaiting approval" ? "Review the requested action under Approval required."
+                                            : workspace.busy ? "Working on your request."
+                                            : workspace.voice.available ? (workspace.connected ? "Press the microphone and speak, or type a message." : "Sign in under Settings to connect. You can still say \"open settings\".")
+                                            : workspace.connected ? "Type a message to talk to your model. Voice input needs a browser with speech recognition." : workspace.mockSession ? "Type a message to run a fixture task." : "Sign in under Settings to connect."
+                                    }
+                                    Button {
+                                        id: orbTalk
+                                        visible: workspace.voice.available
+                                        Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 10
+                                        implicitWidth: 56; implicitHeight: 56
+                                        Accessible.name: workspace.voice.listening ? "Stop listening" : "Start listening"
+                                        onClicked: workspace.voice.listening ? workspace.voice.stop() : workspace.voice.start()
+                                        contentItem: Item { Icon { anchors.centerIn: parent; path: window.icons.mic; tint: workspace.voice.listening ? "#021006" : window.cyan; size: 24 } }
+                                        background: Rectangle { radius: 28; color: workspace.voice.listening ? "#ffb000" : orbTalk.hovered ? "#0b2015" : "#020a06"; border.color: workspace.voice.listening ? "#ffb000" : orbTalk.activeFocus ? window.ink : window.cyan; border.width: 2 }
+                                    }
+                                    Caption { visible: workspace.voice.available; Layout.fillWidth: true; Layout.topMargin: 4; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 11; text: "Speech is recognised by this browser. In Chrome and Edge the audio goes to the browser vendor's speech service; MNAKA and your model receive only the text." }
                                 }
                             }
                             GridLayout {
@@ -1085,9 +1133,9 @@ ApplicationWindow {
                         ColumnLayout {
                             id: settingsContent; anchors.fill: parent; anchors.margins: 24; spacing: 16
                             Heading { text: "Private by default" }
-                            Caption { text: "Camera, audio and location capture are unavailable. Selected images stay on this device unless you choose to interpret one. Preferences are session-only. Provider credentials and database connection details are never exposed to QML."; Layout.fillWidth: true }
+                            Caption { text: "Camera and location capture are unavailable. The microphone is used only while you press the microphone button. Selected images stay on this device unless you choose to interpret one. Preferences are session-only. Provider credentials and database connection details are never exposed to QML."; Layout.fillWidth: true }
                             Label { text: workspace.connected ? "Model provider: your own model, through the account gateway" : workspace.mockSession ? "Model provider: MockModelProvider (deterministic fixture)" : "Model provider: not connected"; color: window.cyan; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                            Caption { text: "Cloud transmission: " + (workspace.connected ? "messages, saved data and images you choose to interpret" : workspace.accountConfigured ? "account sign-in only" : "disabled") + "\nMicrophone / wake detection: unavailable\nCamera / gesture detection: unavailable\nPostgreSQL: " + (Qt.platform.os === "wasm" ? "not part of the browser build" : "desktop adapter built; UI persistence not connected") + "\nBroker: " + (workspace.connected ? "conversation steps only; no OS access" : workspace.mockSession ? "fixture tools only (demo.echo, demo.review); no OS access" : "execution disabled") + "\nRelay and mobile pairing: unavailable\nModes affect workflows, never permissions."; Layout.fillWidth: true }
+                            Caption { text: "Cloud transmission: " + (workspace.connected ? "messages, saved data and images you choose to interpret" : workspace.accountConfigured ? "account sign-in only" : "disabled") + "\nMicrophone: " + (workspace.voice.available ? "only while you press the microphone, through this browser's speech recognition" : "unavailable in this build") + "\nWake word detection: unavailable\nCamera / gesture detection: unavailable\nPostgreSQL: " + (Qt.platform.os === "wasm" ? "not part of the browser build" : "desktop adapter built; UI persistence not connected") + "\nBroker: " + (workspace.connected ? "conversation steps only; no OS access" : workspace.mockSession ? "fixture tools only (demo.echo, demo.review); no OS access" : "execution disabled") + "\nRelay and mobile pairing: unavailable\nModes affect workflows, never permissions."; Layout.fillWidth: true }
                             Label { text: "ENGINE REGISTRY"; color: window.muted; font.pixelSize: 11; font.letterSpacing: 2 }
                             Repeater {
                                 model: workspace.capabilities

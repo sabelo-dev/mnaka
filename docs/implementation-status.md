@@ -409,3 +409,23 @@ browser build added a file through the file chooser fallback, sent a request and
 rendered the diff against the same stand-in. Both functions were redeployed on
 2026-10-11 and refuse signed-out calls there. Not verified: any real model, the
 browser download path, and the File System Access picker with more than one file.
+
+## Voice input (browser)
+
+`apps/client/VoiceInput` adds push-to-talk speech input in the browser build through
+the page's Web Speech API. There is a microphone button beside the composer and under
+the orb; the orb card shows the listening state and the live transcript. One finished
+utterance is handled like typed text: "open/go to/show <screen>" and "cancel" act
+locally, and anything else is submitted as a message (or left in the composer when it
+cannot be sent). Nothing spoken is executed.
+
+The audio never reaches MNAKA or the owner's model. The browser captures it, and in
+Chrome and Edge sends it to the browser vendor's speech service; the screens say so.
+The hosting headers previously sent `Permissions-Policy: microphone=()`, which blocks
+the microphone outright; they now send `microphone=(self)`.
+
+Not built: a wake word, continuous listening, spoken replies, and any desktop or
+Android recogniser (`available` is false there, and Firefox has no Web Speech
+recognition). Verified in headless Chrome with a simulated recogniser: listening state,
+interim transcript, a spoken navigation command and a spoken message. Not verified: a
+real microphone, the permission prompt, or real speech recognition accuracy.

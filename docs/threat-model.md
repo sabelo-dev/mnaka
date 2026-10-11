@@ -86,6 +86,14 @@ creates an account can spend the owner's model capacity: there is no rate limit 
 budget yet. A saved skill or rule is inert data. The model endpoint sees message
 content; a remembered fact is sent with every message.
 
+**Voice input.** Speech is captured only while the user has pressed the microphone
+button, by the browser's own recogniser; in Chrome and Edge the audio goes to the
+browser vendor's speech service, which MNAKA does not control. The client receives
+text only, bounds it and treats it as typed input: a few fixed phrases navigate or
+cancel, everything else is a message. A bystander's speech can therefore be sent as a
+message while the button is active. The page allows the microphone for its own
+origin only.
+
 **Hosted browser client.** The WebAssembly build is static files. The only
 configuration it carries is the public Supabase URL and publishable key, and its
 only network calls are account sign-in. The hosting template serves it over HTTPS

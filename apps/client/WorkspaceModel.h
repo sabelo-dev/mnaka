@@ -9,6 +9,7 @@
 #include <functional>
 #include <memory>
 #include "apps/client/DeveloperSession.h"
+#include "apps/client/VoiceInput.h"
 
 namespace mnaka {
 class TaskOrchestrator;
@@ -54,6 +55,7 @@ class WorkspaceModel : public QObject {
     Q_PROPERTY(QString imageAnswer READ imageAnswer NOTIFY imageChanged)
     Q_PROPERTY(bool imageInterpreting READ imageInterpreting NOTIFY imageChanged)
     Q_PROPERTY(DeveloperSession *developer READ developer CONSTANT)
+    Q_PROPERTY(VoiceInput *voice READ voice CONSTANT)
     // Fixture session for automated tests and --mock-session; the application has no switch for it.: mock provider, fixture broker tools, nothing persisted.
     Q_PROPERTY(bool mockSession READ mockSession WRITE setMockSession NOTIFY changed)
 public:
@@ -79,6 +81,7 @@ public:
     QString accountNotice() const { return m_accountNotice; }
     bool connected() const { return m_live; }
     DeveloperSession *developer() const { return m_developer; }
+    VoiceInput *voice() const { return m_voice; }
     QVariantList memories() const { return m_memories; }
     QVariantList skills() const { return m_skills; }
     QVariantList rules() const { return m_rules; }
@@ -137,6 +140,7 @@ private:
     QString m_accountNotice;
     mnaka::SupabaseData *m_data = nullptr;
     DeveloperSession *m_developer;
+    VoiceInput *m_voice;
     std::shared_ptr<mnaka::SessionToken> m_token;
     bool m_mock = false, m_live = false, m_imageInterpreting = false;
     quint64 m_sessionGeneration = 0;

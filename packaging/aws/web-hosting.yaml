@@ -128,7 +128,7 @@ Resources:
         CustomHeadersConfig:
           Items:
             - Header: Permissions-Policy
-              Value: camera=(), microphone=(), geolocation=()
+              Value: camera=(), microphone=(self), geolocation=()
               Override: true
             - Header: Cross-Origin-Opener-Policy
               Value: same-origin

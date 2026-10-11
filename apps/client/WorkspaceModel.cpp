@@ -55,7 +55,7 @@ QPair<QString, QString> decodePreview(QByteArray bytes) {
 }
 }
 
-WorkspaceModel::WorkspaceModel(QObject *parent) : QObject(parent), m_developer(new DeveloperSession(this)) {
+WorkspaceModel::WorkspaceModel(QObject *parent) : QObject(parent), m_developer(new DeveloperSession(this)), m_voice(new VoiceInput(this)) {
     // Deployment configuration, not a secret: the browser page or the desktop environment supplies it.
     const auto url = qEnvironmentVariable("MNAKA_SUPABASE_URL"), key = qEnvironmentVariable("MNAKA_SUPABASE_PUBLISHABLE_KEY");
     if (url.isEmpty() && key.isEmpty()) return;
