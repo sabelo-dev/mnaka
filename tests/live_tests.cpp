@@ -100,6 +100,12 @@ private slots:
         QCOMPARE(model.messages().first().toMap()["text"].toString(), QString("earlier question"));
         QVERIFY(status(model, "assistant").contains("Your model"));
         QVERIFY(status(model, "control").contains("desktop app"));
+        for (const auto &value : model.capabilities()) {
+            const auto entry = value.toMap();
+            const auto id = entry["id"].toString();
+            QCOMPARE(entry["enabled"].toBool(), id == "assistant");
+            QCOMPARE(entry["available"].toBool(), QStringList({"memory", "skills", "vision", "proactive"}).contains(id));
+        }
 
         QVERIFY(model.submit("What is MNAKA?", "Assistant"));
         QTRY_VERIFY_WITH_TIMEOUT(!model.busy(), 10000);

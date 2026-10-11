@@ -95,7 +95,7 @@ ApplicationWindow {
     function capabilityFor(id) {
         const list = workspace.capabilities
         for (let i = 0; i < list.length; ++i) if (list[i].id === id) return list[i]
-        return { enabled: false, status: "Service unavailable" }
+        return { enabled: false, available: false, status: "Service unavailable" }
     }
     function activeTaskCount() {
         let count = 0
@@ -279,8 +279,8 @@ ApplicationWindow {
             Caption { text: engine.detail; font.pixelSize: 12; Layout.fillWidth: true }
             RowLayout {
                 spacing: 7; Layout.topMargin: 2; Layout.fillWidth: true
-                Rectangle { implicitWidth: 8; implicitHeight: 8; radius: 4; color: engine.capability.enabled ? "#22c55e" : "#56608a" }
-                Caption { text: engine.capability.enabled ? "Ready" : engine.capability.status; font.pixelSize: 12; color: engine.capability.enabled ? "#4ade80" : window.muted; maximumLineCount: 2; elide: Text.ElideRight; Layout.fillWidth: true }
+                Rectangle { implicitWidth: 8; implicitHeight: 8; radius: 4; color: engine.capability.enabled ? "#22c55e" : engine.capability.available ? window.cyan : "#56608a" }
+                Caption { text: engine.capability.enabled ? "Ready" : engine.capability.status; font.pixelSize: 12; color: engine.capability.enabled ? "#4ade80" : engine.capability.available ? window.cyan : window.muted; maximumLineCount: 2; elide: Text.ElideRight; Layout.fillWidth: true }
             }
         }
         Button {
@@ -369,7 +369,7 @@ ApplicationWindow {
                         Caption { text: workspace.connected ? "Connected" : workspace.mockSession ? "Mock session" : "Not connected" }
                     }
                     Pill { text: "●  " + workspace.state; tint: workspace.busy ? "#b79cff" : window.cyan }
-                    ComboBox { id: mode; model: ["Assistant", "Developer", "Autonomous"]; Layout.preferredWidth: 140; Accessible.name: "Workflow mode" }
+                    ComboBox { id: mode; model: ["Assistant", "Developer", "Autonomous"]; Layout.preferredWidth: 170; Accessible.name: "Workflow mode" }
                 }
             }
             ScrollView {
@@ -1064,7 +1064,7 @@ ApplicationWindow {
                                 Caption {
                                     required property var modelData
                                     Layout.fillWidth: true
-                                    text: modelData.id + " · " + (modelData.enabled ? "enabled" : "disabled") + " · " + modelData.status
+                                    text: modelData.id + " · " + (modelData.enabled ? "engine enabled" : modelData.available ? "account feature" : "unavailable") + " · " + modelData.status
                                 }
                             }
                             GhostButton { text: "Delete session history"; onClicked: clearDialog.open() }

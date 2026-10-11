@@ -162,7 +162,18 @@ void WorkspaceModel::pickImage() {
 #endif
 }
 QVariantList WorkspaceModel::capabilities() const {
-    if (m_registry) return m_registry->capabilities();
+    if (m_registry) {
+        auto result = m_registry->capabilities();
+        if (!m_live) return result;
+        // Account features work without being engines: they run no tools, so the registry keeps
+        // them disabled. "available" tells the screens apart from engines that cannot work here.
+        for (auto &value : result) {
+            auto entry = value.toMap();
+            entry["available"] = QStringList{"memory", "skills", "vision", "proactive"}.contains(entry["id"].toString());
+            value = entry;
+        }
+        return result;
+    }
     QVariantList result;
     for (const auto &id : QStringList{"assistant", "software", "control", "skills", "memory", "vision", "proactive"})
         result.append(QVariantMap{{"id", id}, {"enabled", false}, {"status", "Service unavailable"}});
