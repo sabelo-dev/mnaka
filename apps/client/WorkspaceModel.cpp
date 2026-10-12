@@ -8,8 +8,17 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonParseError>
+#include <QGuiApplication>
+#include <QLocale>
+#include <QRegularExpression>
+#include <QScreen>
 #include <QSettings>
+#include <QSysInfo>
+#include <QTimeZone>
 #include <QTimer>
+#ifdef Q_OS_WASM
+#include <emscripten/val.h>
+#endif
 #include "engines/skills/SkillValidator.h"
 #include "engines/assistant/ConversationEngine.h"
 #include "adapters/mock/MockModelProvider.h"
@@ -38,6 +47,50 @@ std::unique_ptr<QSettings> sessionStore() {
 #else
     return nullptr;
 #endif
+}
+// Identifies this install among the account's devices so it can find its own row again. It is
+// not a credential and proves nothing.
+QString installKey() {
+    const auto file = qEnvironmentVariable("MNAKA_DEVICE_FILE");
+    const auto store = file.isEmpty() ? std::make_unique<QSettings>() : std::make_unique<QSettings>(file, QSettings::IniFormat);
+    static const QRegularExpression valid("^[0-9a-f]{32}$");
+    auto key = store->value("device/installKey").toString();
+    if (!valid.match(key).hasMatch()) {
+        key = QUuid::createUuid().toString(QUuid::Id128);
+        store->setValue("device/installKey", key);
+    }
+    return key;
+}
+QString deviceKind() {
+#if defined(Q_OS_WASM)
+    return "web";
+#elif defined(Q_OS_ANDROID)
+    return "android";
+#else
+    return "desktop";
+#endif
+}
+// Everything a connected device reports about itself. Nothing here identifies files, accounts,
+// running programs or location beyond the time zone.
+QJsonObject deviceFacts() {
+    QJsonObject facts{{"os", QSysInfo::prettyProductName().left(120)}, {"cpu", QSysInfo::currentCpuArchitecture().left(40)},
+        {"locale", QLocale::system().name().left(20)}, {"timezone", QString::fromLatin1(QTimeZone::systemTimeZoneId()).left(60)}};
+    if (qobject_cast<QGuiApplication *>(QCoreApplication::instance()))
+        if (const auto *screen = QGuiApplication::primaryScreen())
+            facts["screen"] = QString("%1x%2").arg(screen->size().width()).arg(screen->size().height());
+#ifdef Q_OS_WASM
+    // Qt describes the WebAssembly runtime here, not the machine; ask the browser instead.
+    const auto navigator = emscripten::val::global("navigator");
+    const auto text = [](const emscripten::val &value, int limit) {
+        return value.isString() ? QString::fromStdString(value.as<std::string>()).left(limit) : QString();
+    };
+    facts.remove("cpu");
+    facts["os"] = text(navigator["platform"], 120);
+    facts["browser"] = text(navigator["userAgent"], 200);
+    facts["locale"] = text(navigator["language"], 20);
+    facts["timezone"] = text(emscripten::val::global("Intl").call<emscripten::val>("DateTimeFormat").call<emscripten::val>("resolvedOptions")["timeZone"], 60);
+#endif
+    return facts;
 }
 // What each engine entry means while an account session is running.
 QHash<QString, QString> liveEngineStatus() {
@@ -78,6 +131,17 @@ WorkspaceModel::WorkspaceModel(QObject *parent) : QObject(parent), m_developer(n
     m_accountNotice = m_auth->configError();
     m_data = new SupabaseData(m_auth, this);
     m_token = std::make_shared<SessionToken>();
+    m_deviceRef = std::make_shared<SessionToken>();
+    m_deviceBeat = new QTimer(this);
+    m_deviceBeat->setInterval(60000);
+    connect(m_deviceBeat, &QTimer::timeout, this, [this] {
+        if (!m_live || m_deviceId.isEmpty()) return;
+        const auto generation = m_sessionGeneration;
+        // Any write marks the device as seen; the facts are refreshed in the same request.
+        m_data->update("mnaka_devices", m_deviceId, {{"facts", deviceFacts()}}, [this, generation](int status, QJsonDocument) {
+            if (generation == m_sessionGeneration && status == 200) refreshDevices(); // also notices removal from elsewhere
+        });
+    });
     connect(m_auth, &SupabaseAuth::changed, this, [this] {
         if (m_auth->signedIn()) rememberSession(m_auth->refreshToken()); // also follows token rotation
         else if (m_live) rememberSession({}); // the session ended: nothing left worth restoring
@@ -280,11 +344,12 @@ void WorkspaceModel::syncAccount() {
     ++m_sessionGeneration;
     m_mock = false; m_live = signedIn;
     m_memories.clear(); m_skills.clear(); m_rules.clear(); m_dataNotice.clear();
+    m_devices.clear(); m_deviceId.clear(); m_deviceNotice.clear(); m_deviceRef->set({}); m_deviceBeat->stop();
     m_imageAnswer.clear(); m_imageInterpreting = false;
     m_modelStatus = "unknown"; m_modelName.clear(); m_modelProblem.clear();
     m_developer->setGateway(signedIn ? m_data : nullptr);
     if (signedIn) {
-        startRuntime(new GatewayModelProvider(m_auth->projectUrl(), m_auth->publishableKey(), m_token), "Model via account gateway", liveEngineStatus());
+        startRuntime(new GatewayModelProvider(m_auth->projectUrl(), m_auth->publishableKey(), m_token, m_deviceRef), "Model via account gateway", liveEngineStatus());
         loadAccountData();
     }
     emit messagesChanged(); emit tasksChanged(); emit capabilitiesChanged(); emit dataChanged(); emit imageChanged();
@@ -325,6 +390,69 @@ void WorkspaceModel::loadAccountData() {
     load("mnaka_memories", "select=id,content&order=created_at.asc&limit=200", &WorkspaceModel::m_memories);
     load("mnaka_skills", "select=id,skill_id,version,artifact_hash&order=created_at.asc&limit=100", &WorkspaceModel::m_skills);
     load("mnaka_rules", "select=id,title,schedule,enabled&order=created_at.asc&limit=100", &WorkspaceModel::m_rules);
+    refreshDevices();
+}
+QString WorkspaceModel::deviceSuggestedName() const {
+    const auto kind = deviceKind();
+    const auto host = kind == "desktop" ? QSysInfo::machineHostName().left(60) : QString();
+    return !host.isEmpty() ? host : kind == "web" ? QString("Browser") : kind == "android" ? QString("Android device") : QString("Desktop");
+}
+QStringList WorkspaceModel::deviceFactLines() const {
+    QStringList lines;
+    const auto facts = deviceFacts();
+    for (auto it = facts.begin(); it != facts.end(); ++it) lines.append(it.key() + " " + it.value().toString());
+    return lines;
+}
+void WorkspaceModel::refreshDevices() {
+    if (!m_live) return;
+    const auto generation = m_sessionGeneration;
+    m_data->list("mnaka_devices", "select=id,install_key,name,kind,facts,last_seen,online&order=created_at.asc&limit=50", [this, generation](int status, QJsonDocument body) {
+        if (generation != m_sessionGeneration) return;
+        if (status != 200) {
+            m_deviceNotice = status == 404 ? "Device connection is not set up on this account service yet." : "Your devices could not be loaded.";
+            emit dataChanged(); return;
+        }
+        const auto mine = installKey();
+        m_devices.clear(); m_deviceId.clear();
+        for (const auto &value : body.array()) {
+            const auto row = value.toObject();
+            const auto facts = row["facts"].toObject();
+            const bool here = row["install_key"].toString() == mine;
+            if (here) m_deviceId = row["id"].toString();
+            m_devices.append(QVariantMap{{"id", row["id"].toString()}, {"name", row["name"].toString().left(60)}, {"kind", row["kind"].toString().left(20)},
+                {"summary", QStringList{facts["os"].toString().left(120), facts["cpu"].toString().left(40)}.filter(QRegularExpression(".")).join(" · ")},
+                {"online", row["online"].toBool()}, {"thisDevice", here},
+                {"lastSeen", QDateTime::fromString(row["last_seen"].toString(), Qt::ISODateWithMs).toLocalTime().toString("d MMM, HH:mm")}});
+        }
+        m_deviceRef->set(m_deviceId);
+        if (m_deviceId.isEmpty()) m_deviceBeat->stop(); else if (!m_deviceBeat->isActive()) m_deviceBeat->start();
+        m_deviceNotice.clear();
+        emit dataChanged();
+    });
+}
+void WorkspaceModel::connectDevice(QString name) {
+    name = name.simplified();
+    if (!m_live || !m_deviceId.isEmpty()) return;
+    if (name.isEmpty() || name.size() > 60) { m_deviceNotice = "A device name is 1 to 60 characters."; emit dataChanged(); return; }
+    const auto generation = m_sessionGeneration;
+    m_data->insert("mnaka_devices", {{"install_key", installKey()}, {"name", name}, {"kind", deviceKind()}, {"facts", deviceFacts()}},
+        [this, generation](int status, QJsonDocument) {
+            if (generation != m_sessionGeneration) return;
+            // 409: this install already has a row, left by an earlier connection. Loading finds it.
+            if (status != 201 && status != 409) {
+                m_deviceNotice = "This device was not connected. The account service did not accept the request."; emit dataChanged(); return;
+            }
+            refreshDevices();
+        });
+}
+void WorkspaceModel::disconnectDevice(QString id) {
+    if (!m_live || QUuid(id).isNull()) return;
+    const auto generation = m_sessionGeneration;
+    m_data->remove("mnaka_devices", id, [this, generation](int status, QJsonDocument) {
+        if (generation != m_sessionGeneration) return;
+        if (status < 200 || status >= 300) { m_deviceNotice = "The device was not removed."; emit dataChanged(); return; }
+        refreshDevices();
+    });
 }
 void WorkspaceModel::addMemory(QString text) {
     text = text.trimmed();
@@ -523,7 +651,7 @@ void WorkspaceModel::clearHistory() {
         // Restarting the runtime drops this session's tasks; the saved conversation is deleted on the server.
         const auto generation = m_sessionGeneration;
         stopRuntime();
-        startRuntime(new GatewayModelProvider(m_auth->projectUrl(), m_auth->publishableKey(), m_token), "Model via account gateway", liveEngineStatus());
+        startRuntime(new GatewayModelProvider(m_auth->projectUrl(), m_auth->publishableKey(), m_token, m_deviceRef), "Model via account gateway", liveEngineStatus());
         m_data->remove("mnaka_messages", {}, [this, generation](int status, QJsonDocument) {
             if (generation != m_sessionGeneration || (status >= 200 && status < 300)) return;
             m_notice = "The saved conversation could not be deleted."; emit changed();

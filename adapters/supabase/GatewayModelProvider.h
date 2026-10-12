@@ -24,7 +24,9 @@ private:
 class GatewayModelProvider : public ModelProvider {
     Q_OBJECT
 public:
-    GatewayModelProvider(QUrl projectUrl, QString publishableKey, std::shared_ptr<SessionToken> token);
+    // `device` holds the id of this install's connected-device row, or nothing when it is not connected.
+    GatewayModelProvider(QUrl projectUrl, QString publishableKey, std::shared_ptr<SessionToken> token,
+        std::shared_ptr<SessionToken> device = nullptr);
     // Shared with image interpretation, which is not a task. Empty URL when the pair is unusable.
     static QUrl endpoint(const QUrl &projectUrl);
 public slots:
@@ -33,7 +35,7 @@ public slots:
 private:
     QUrl m_projectUrl;
     QString m_key;
-    std::shared_ptr<SessionToken> m_token;
+    std::shared_ptr<SessionToken> m_token, m_device;
     QNetworkAccessManager *m_network = nullptr;
     QHash<QUuid, QNetworkReply *> m_replies;
 };

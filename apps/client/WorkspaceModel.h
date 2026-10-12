@@ -56,6 +56,13 @@ class WorkspaceModel : public QObject {
     Q_PROPERTY(QString modelProblem READ modelProblem NOTIFY changed)
     // The signed-in user's saved rows. Saving a skill or rule records it; nothing executes it.
     Q_PROPERTY(QVariantList memories READ memories NOTIFY dataChanged)
+    // Devices connected to the account: id, name, kind, summary, online, thisDevice, lastSeen.
+    Q_PROPERTY(QVariantList devices READ devices NOTIFY dataChanged)
+    Q_PROPERTY(bool thisDeviceConnected READ thisDeviceConnected NOTIFY dataChanged)
+    Q_PROPERTY(QString deviceNotice READ deviceNotice NOTIFY dataChanged)
+    Q_PROPERTY(QString deviceSuggestedName READ deviceSuggestedName CONSTANT)
+    // Exactly what connecting this device saves, in words: "os Windows 11", "cpu x86_64", ...
+    Q_PROPERTY(QStringList deviceFactLines READ deviceFactLines CONSTANT)
     Q_PROPERTY(QVariantList skills READ skills NOTIFY dataChanged)
     Q_PROPERTY(QVariantList rules READ rules NOTIFY dataChanged)
     Q_PROPERTY(QString dataNotice READ dataNotice NOTIFY dataChanged)
@@ -95,6 +102,11 @@ public:
     DeveloperSession *developer() const { return m_developer; }
     VoiceInput *voice() const { return m_voice; }
     QVariantList memories() const { return m_memories; }
+    QVariantList devices() const { return m_devices; }
+    bool thisDeviceConnected() const { return !m_deviceId.isEmpty(); }
+    QString deviceNotice() const { return m_deviceNotice; }
+    QString deviceSuggestedName() const;
+    QStringList deviceFactLines() const;
     QVariantList skills() const { return m_skills; }
     QVariantList rules() const { return m_rules; }
     QString dataNotice() const { return m_dataNotice; }
@@ -107,6 +119,12 @@ public:
     Q_INVOKABLE void clearSkillReport() { m_skillReport.clear(); m_validManifest = QJsonObject(); emit skillReportChanged(); }
     Q_INVOKABLE void saveSkill();
     Q_INVOKABLE void deleteSkill(QString id);
+    // Registers the device MNAKA is running on with the account. It shares what the device is,
+    // not control of it.
+    Q_INVOKABLE void connectDevice(QString name);
+    // Removes any of the account's devices; for this one, it also stops reporting in.
+    Q_INVOKABLE void disconnectDevice(QString id);
+    Q_INVOKABLE void refreshDevices();
     Q_INVOKABLE void addMemory(QString text);
     Q_INVOKABLE void deleteMemory(QString id);
     Q_INVOKABLE void addRule(QString title, QString schedule);
@@ -158,7 +176,10 @@ private:
     std::shared_ptr<mnaka::SessionToken> m_token;
     bool m_mock = false, m_live = false, m_imageInterpreting = false;
     quint64 m_sessionGeneration = 0;
-    QVariantList m_memories, m_skills, m_rules;
+    QVariantList m_memories, m_skills, m_rules, m_devices;
+    QString m_deviceId, m_deviceNotice;
+    std::shared_ptr<mnaka::SessionToken> m_deviceRef; // this device's row id, shared with the provider
+    QTimer *m_deviceBeat = nullptr;
     QString m_dataNotice, m_imageAnswer, m_modelStatus = "unknown", m_modelName, m_modelProblem, m_rememberedToken;
     QJsonObject m_validManifest;
     bool m_imageLoading = false;

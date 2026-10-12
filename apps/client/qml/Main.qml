@@ -117,8 +117,10 @@ ApplicationWindow {
             row("developer", "Developer workspace", !signedIn ? signIn("You can add files now; sign in to ask for changes.") : noModel ? needsModel : experimental("Proposes changes to files you add. It cannot build or test.")),
             row("skills", "Skills", !signedIn ? signIn("Inspection works now; sign in to save manifests.") : experimental("Saves manifests that pass inspection. Nothing runs them yet.")),
             row("proactive", "Proactive rules", !signedIn ? signIn("Sign in to save rules.") : experimental("Saves your rules. Nothing schedules or runs them yet.")),
-            row("voice", "Voice input", workspace.voice.available ? experimental(workspace.voice.handsFree ? "Hands-free: say \"Mnaka\" and your request. Recognised by this browser." : "Press the microphone, or turn on hands-free and say \"Mnaka\".") : state("UNAVAILABLE", "off", "Needs the web version in Chrome, Edge or Safari.")),
-            row("control", "Computer control", state("DESKTOP REQUIRED", "off", "Needs a paired desktop app, which is not built yet."))
+            row("voice", "Voice input", workspace.voice.available ? experimental(workspace.voice.handsFree ? "Hands-free: always listening, and everything heard is sent as a request. Recognised by this browser." : "Press the microphone for one request, or turn on hands-free to keep it listening.") : state("UNAVAILABLE", "off", "Needs the web version in Chrome, Edge or Safari.")),
+            row("control", "Computer control", !signedIn ? signIn("Sign in to connect this device.")
+                : workspace.thisDeviceConnected ? state("CONNECTED", "on", "This device is connected, so the assistant knows what it is. Controlling it is not built yet.")
+                : state("NOT CONNECTED", "off", "Connect this device under Computer Control. Controlling it is not built yet."))
         ]
     }
     readonly property bool modelDown: workspace.modelStatus === "missing" || workspace.modelStatus === "failing"
@@ -1069,7 +1071,7 @@ ApplicationWindow {
                         }
                     }
                     Card {
-                        visible: window.page === 3 || (window.page >= 4 && window.page <= 7 && !workspace.connected)
+                        visible: window.page >= 3 && window.page <= 7 && !workspace.connected
                         Layout.fillWidth: true; Layout.leftMargin: content.gutter; Layout.rightMargin: content.gutter
                         implicitHeight: engineContent.implicitHeight + 48
                         ColumnLayout {
@@ -1079,12 +1081,68 @@ ApplicationWindow {
                                 Icon { path: window.pageIcons[window.page]; tint: window.cyan; size: 26 }
                                 Pill { text: "NOT CONNECTED"; tint: window.muted }
                             }
-                            Heading { Layout.fillWidth: true; text: ["", "", "A reviewable change starts with a trusted project", "No desktop is paired", "No skills are installed", "No persistent projects or memories", "Vision adapters are not configured", "No proactive rules are active"][window.page] || "" }
+                            Heading { Layout.fillWidth: true; text: ["", "", "A reviewable change starts with a trusted project", "No device is connected", "No skills are installed", "No persistent projects or memories", "Vision adapters are not configured", "No proactive rules are active"][window.page] || "" }
                             Caption {
                                 Layout.fillWidth: true
-                                text: ["", "", "Project picker, indexing, diff, build logs and rollback require the project broker and PostgreSQL. Builds additionally require a tested OS sandbox. Native Windows execution remains disabled.", "No paired devices or application adapters are connected.", "Skills will use registered tools only. Installation requires schema validation, validation tests, a pinned manifest hash and explicit authorization. Generated workflows cannot alter host permissions.", "Facts and decisions will include source, scope, confidence and status. PostgreSQL is the only relational store. No fallback database is created. Export, correction and deletion require the storage service.", "Select a local PNG or JPEG image to preview it. Image interpretation and 3D asset loading are unavailable.", "Planned first rule: weekdays at 08:00, check the recorded build result and suggest a notification on failure. Scheduling needs timezone, quiet hours, cooldown and authorized tool scope."][window.page] || ""
+                                text: ["", "", "Project picker, indexing, diff, build logs and rollback require the project broker and PostgreSQL. Builds additionally require a tested OS sandbox. Native Windows execution remains disabled.", "Sign in under Settings, then connect this device here.", "Skills will use registered tools only. Installation requires schema validation, validation tests, a pinned manifest hash and explicit authorization. Generated workflows cannot alter host permissions.", "Facts and decisions will include source, scope, confidence and status. PostgreSQL is the only relational store. No fallback database is created. Export, correction and deletion require the storage service.", "Select a local PNG or JPEG image to preview it. Image interpretation and 3D asset loading are unavailable.", "Planned first rule: weekdays at 08:00, check the recorded build result and suggest a notification on failure. Scheduling needs timezone, quiet hours, cooldown and authorized tool scope."][window.page] || ""
                             }
                             GhostButton { text: "Back to overview"; onClicked: window.page = 0 }
+                        }
+                    }
+                    Card {
+                        visible: window.page === 3 && workspace.connected
+                        Layout.fillWidth: true; Layout.leftMargin: content.gutter; Layout.rightMargin: content.gutter
+                        implicitHeight: deviceColumn.implicitHeight + 48
+                        ColumnLayout {
+                            id: deviceColumn
+                            anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 24; spacing: 12
+                            RowLayout {
+                                Layout.fillWidth: true; spacing: 12
+                                Heading { text: "Devices"; Layout.fillWidth: true }
+                                Pill { text: workspace.thisDeviceConnected ? "THIS DEVICE CONNECTED" : "THIS DEVICE NOT CONNECTED"; tint: workspace.thisDeviceConnected ? window.cyan : window.muted }
+                            }
+                            Caption { Layout.fillWidth: true; text: "Connecting a device tells your account what it is, so the assistant can answer with it in mind and you can see which of your devices are online. MNAKA cannot control a connected device, see its screen or read its files." }
+                            RowLayout {
+                                visible: !workspace.thisDeviceConnected; Layout.fillWidth: true; spacing: 10
+                                Field {
+                                    id: deviceName
+                                    Layout.fillWidth: true; text: workspace.deviceSuggestedName; placeholderText: "A name for this device"
+                                    Accessible.name: "Device name"; maximumLength: 60
+                                    onAccepted: workspace.connectDevice(text)
+                                }
+                                PrimaryButton { text: "Connect this device"; enabled: deviceName.text.trim().length > 0; onClicked: workspace.connectDevice(deviceName.text) }
+                            }
+                            Caption {
+                                visible: !workspace.thisDeviceConnected; Layout.fillWidth: true; font.pixelSize: 11; textFormat: Text.PlainText
+                                text: "Connecting saves this to your account and sends it to the model with your messages: the name above; " + workspace.deviceFactLines.join("; ") + ". It is refreshed about once a minute while MNAKA is open here."
+                            }
+                            Caption { text: workspace.deviceNotice; visible: text.length > 0; Layout.fillWidth: true; color: "#f5d28a" }
+                            Caption { visible: workspace.devices.length === 0 && workspace.deviceNotice.length === 0; text: "No devices are connected yet."; Layout.fillWidth: true }
+                            Repeater {
+                                model: workspace.devices
+                                Rectangle {
+                                    id: deviceRow
+                                    required property var modelData
+                                    Layout.fillWidth: true; radius: 2; color: "#020a06"; border.color: modelData.thisDevice ? "#1f5a3c" : window.line
+                                    implicitHeight: deviceRowLayout.implicitHeight + 20
+                                    RowLayout {
+                                        id: deviceRowLayout
+                                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; anchors.margins: 12; spacing: 12
+                                        Rectangle { implicitWidth: 8; implicitHeight: 8; radius: 4; color: deviceRow.modelData.online ? "#22c55e" : "#2f5a44" }
+                                        ColumnLayout {
+                                            Layout.fillWidth: true; spacing: 2
+                                            Label { text: deviceRow.modelData.name + (deviceRow.modelData.thisDevice ? "  (this device)" : ""); textFormat: Text.PlainText; color: window.ink; font.pixelSize: 14; elide: Text.ElideRight; Layout.fillWidth: true }
+                                            Caption { text: deviceRow.modelData.kind + " · " + (deviceRow.modelData.summary.length > 0 ? deviceRow.modelData.summary + " · " : "") + (deviceRow.modelData.online ? "online" : "last seen " + deviceRow.modelData.lastSeen); textFormat: Text.PlainText; font.pixelSize: 11; Layout.fillWidth: true }
+                                        }
+                                        GhostButton {
+                                            text: deviceRow.modelData.thisDevice ? "Disconnect" : "Remove"; implicitHeight: 32
+                                            Accessible.name: (deviceRow.modelData.thisDevice ? "Disconnect " : "Remove ") + deviceRow.modelData.name
+                                            onClicked: workspace.disconnectDevice(deviceRow.modelData.id)
+                                        }
+                                    }
+                                }
+                            }
+                            GhostButton { text: "Refresh"; onClicked: workspace.refreshDevices() }
                         }
                     }
                     Card {

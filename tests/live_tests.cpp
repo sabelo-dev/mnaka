@@ -17,7 +17,8 @@ public:
     int assistantStatus = 200;
     bool modelConfigured = true, modelWorking = true;
     int tokenStatus = 200;
-    QJsonObject lastAssistantBody, lastDeveloperBody, developerReply;
+    QJsonObject lastAssistantBody, lastDeveloperBody, developerReply, lastDeviceBody;
+    QJsonArray devices;
     int developerStatus = 200;
     QByteArray lastAuthorization;
     FakeProject() {
@@ -59,6 +60,15 @@ public:
                 } else if (path == "/functions/v1/developer") {
                     lastDeveloperBody = body; status = developerStatus;
                     answer = QJsonDocument(status == 200 ? developerReply : QJsonObject{{"code", "PROVIDER_UNAVAILABLE"}});
+                } else if (path.endsWith("mnaka_devices") && verb == "GET") answer = QJsonDocument(devices);
+                else if (path.endsWith("mnaka_devices") && verb == "POST") {
+                    lastDeviceBody = body; status = 201; auto row = body;
+                    row["id"] = QUuid::createUuid().toString(QUuid::WithoutBraces); row["online"] = true; row["last_seen"] = "2026-10-12T10:00:00.000Z";
+                    devices.append(row); answer = QJsonDocument(QJsonArray{row});
+                } else if (path.endsWith("mnaka_devices") && verb == "DELETE") {
+                    const auto id = QUrlQuery(target.section('?', 1)).queryItemValue("id").mid(3);
+                    for (qsizetype i = 0; i < devices.size(); ++i) if (devices[i].toObject()["id"].toString() == id) { devices.removeAt(i); break; }
+                    status = 204;
                 } else if (verb == "GET") answer = QJsonDocument(path.endsWith("mnaka_messages") ? history : QJsonArray{});
                 else if (verb == "POST") {
                     status = 201; auto row = body; row["id"] = QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -192,6 +202,57 @@ private slots:
         QVERIFY(model.submit("Write a parser", "Developer"));
         QTRY_VERIFY_WITH_TIMEOUT(!model.busy(), 10000);
         QCOMPARE(project.lastAssistantBody["mode"].toString(), QString("developer"));
+    }
+    void connectingThisDeviceRegistersItAndTellsTheModel() {
+        QTemporaryDir folder;
+        qputenv("MNAKA_DEVICE_FILE", folder.filePath("device.ini").toUtf8());
+        FakeProject project; project.configure();
+        // Another of the account's devices, connected earlier from somewhere else.
+        project.devices.append(QJsonObject{{"id", "7c0f6c1e-1111-4222-8333-444455556666"}, {"install_key", QString(32, 'a')}, {"name", "Phone"},
+            {"kind", "android"}, {"facts", QJsonObject{{"os", "Android 14"}, {"cpu", "arm64"}}}, {"online", false}, {"last_seen", "2026-10-11T08:00:00.000Z"}});
+        WorkspaceModel model;
+        QVERIFY(!model.deviceFactLines().isEmpty() && !model.deviceSuggestedName().isEmpty());
+        model.connectDevice("Signed out"); // nothing is sent without an account
+        model.signIn("user@example.test", "password");
+        QTRY_VERIFY(model.connected());
+        QTRY_COMPARE(model.devices().size(), 1);
+        QVERIFY(!model.thisDeviceConnected()); // signing in does not connect a device by itself
+        QVERIFY(!project.calls.contains("POST /rest/v1/mnaka_devices"));
+
+        model.connectDevice("   ");
+        QVERIFY(model.deviceNotice().contains("1 to 60"));
+        model.connectDevice("Study PC");
+        QTRY_VERIFY(model.thisDeviceConnected());
+        QCOMPARE(model.devices().size(), 2);
+        const auto here = model.devices().last().toMap();
+        QCOMPARE(here["name"].toString(), QString("Study PC"));
+        QVERIFY(here["thisDevice"].toBool() && here["online"].toBool());
+        QVERIFY(!model.devices().first().toMap()["thisDevice"].toBool() && !model.devices().first().toMap()["online"].toBool());
+        QVERIFY(QRegularExpression("^[0-9a-f]{32}$").match(project.lastDeviceBody["install_key"].toString()).hasMatch());
+        QCOMPARE(project.lastDeviceBody["kind"].toString(), QString("desktop"));
+        QVERIFY(!project.lastDeviceBody["facts"].toObject()["os"].toString().isEmpty());
+        // Only what the screen says is shared is sent.
+        for (const auto &key : project.lastDeviceBody["facts"].toObject().keys())
+            QVERIFY(QStringList({"os", "cpu", "locale", "timezone", "screen"}).contains(key));
+
+        QVERIFY(model.submit("What am I using?", "Assistant"));
+        QTRY_VERIFY_WITH_TIMEOUT(!model.busy(), 10000);
+        QCOMPARE(project.lastAssistantBody["device"].toString(), here["id"].toString());
+
+        // The same install finds its own row again after signing back in.
+        model.signOut();
+        QTRY_VERIFY(!model.connected());
+        QVERIFY(!model.thisDeviceConnected() && model.devices().isEmpty());
+        model.signIn("user@example.test", "password");
+        QTRY_VERIFY(model.thisDeviceConnected());
+
+        model.disconnectDevice(here["id"].toString());
+        QTRY_VERIFY(!model.thisDeviceConnected());
+        QCOMPARE(model.devices().size(), 1);
+        QVERIFY(model.submit("And now?", "Assistant"));
+        QTRY_VERIFY_WITH_TIMEOUT(!model.busy(), 10000);
+        QVERIFY(!project.lastAssistantBody.contains("device"));
+        qunsetenv("MNAKA_DEVICE_FILE");
     }
     void unavailableModelFailsTheTaskWithoutAReply() {
         FakeProject project; project.configure(); project.assistantStatus = 503; project.modelConfigured = false;

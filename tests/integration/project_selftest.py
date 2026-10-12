@@ -49,6 +49,31 @@ try:
         check(f'temporary user {label} signs in with the publishable key', status == 200 and bool(users[-1]['token']), '' if status == 200 else session)
     A, B = users[0]['token'], users[1]['token']
 
+    # --- connected devices: registered, private, limited to what the client may change ---
+    device = {'install_key': secrets.token_hex(16), 'name': 'Selftest PC', 'kind': 'desktop', 'facts': {'os': 'Test OS', 'cpu': 'x86_64'}}
+    status, made = call('POST', '/rest/v1/mnaka_devices', PUBLISHABLE, A, device)
+    check('device connects', status == 201, made)
+    status, again = call('POST', '/rest/v1/mnaka_devices', PUBLISHABLE, A, device)
+    check('the same install cannot connect twice', status == 409, status)
+    status, listed = call('GET', '/rest/v1/mnaka_devices?select=id,name,kind,facts,online,last_seen', PUBLISHABLE, A)
+    ok = status == 200 and len(listed) == 1 and listed[0]['online'] is True
+    check('device is listed as online', ok, listed)
+    device_id = listed[0]['id'] if ok else ''
+    status, beat = call('PATCH', f'/rest/v1/mnaka_devices?id=eq.{device_id}', PUBLISHABLE, A, {'facts': {'os': 'Test OS 2'}})
+    check('device reports in', status in (200, 204), beat)
+    status, forged = call('PATCH', f'/rest/v1/mnaka_devices?id=eq.{device_id}', PUBLISHABLE, A, {'last_seen': '2020-01-01T00:00:00Z'})
+    check('last seen cannot be set by the client', status in (401, 403), status)
+    status, other = call('GET', '/rest/v1/mnaka_devices?select=id', PUBLISHABLE, B)
+    check('another account cannot see that device', status == 200 and other == [], other)
+    status, _ = call('DELETE', f'/rest/v1/mnaka_devices?id=eq.{device_id}', PUBLISHABLE, B)
+    status, listed = call('GET', '/rest/v1/mnaka_devices?select=id', PUBLISHABLE, A)
+    check('another account cannot remove it', status == 200 and len(listed) == 1, listed)
+    status, bad = call('POST', '/rest/v1/mnaka_devices', PUBLISHABLE, A, {'install_key': secrets.token_hex(16), 'name': 'x', 'kind': 'toaster'})
+    check('unknown device kind is refused', status == 400, status)
+    status, _ = call('DELETE', f'/rest/v1/mnaka_devices?id=eq.{device_id}', PUBLISHABLE, A)
+    status, listed = call('GET', '/rest/v1/mnaka_devices?select=id', PUBLISHABLE, A)
+    check('owner disconnects the device', status == 200 and listed == [], listed)
+
     # --- assistant ---
     status, probe = call('POST', '/functions/v1/assistant', PUBLISHABLE, A, {'probe': True})
     check('probe reports the configured model', status == 200 and probe.get('configured'), probe)

@@ -19,6 +19,18 @@ const PLANNER = " The user chose Autonomous mode: you will work through their la
   "If the request needs only a direct answer, reply with one line starting with \"1.\".";
 const WORKER = " The user chose Autonomous mode: you are carrying out your own plan one step at a time. Do the step " +
   "you are given fully and do not ask the user questions; where something is unknown, choose a reasonable assumption and state it.";
+// What a connected device may tell the model about itself; anything else in its row is ignored.
+const DEVICE_FACTS = ["os", "cpu", "screen", "locale", "timezone", "browser"];
+const oneLine = (value: unknown, limit: number) => String(value).replace(/\s+/g, " ").trim().slice(0, limit);
+function describeDevices(rows: { id: string; name: string; kind: string; facts: Record<string, unknown> | null; online: boolean }[], from: string): string {
+  if (rows.length === 0) return "";
+  return "\n\nDevices the user has connected to MNAKA. You know these facts about them; you cannot control them, " +
+    "see their screens or read their files:\n" + rows.map((row) => {
+      const facts = DEVICE_FACTS.filter((key) => typeof row.facts?.[key] === "string").map((key) => `${key} ${oneLine(row.facts![key], 200)}`).join("; ");
+      return `- ${oneLine(row.name, 60)} (${oneLine(row.kind, 20)}, ${row.online ? "online" : "offline"}` +
+        `${row.id === from ? ", this message was sent from it" : ""}): ${facts}`;
+    }).join("\n");
+}
 const MAX_STEPS = 4;
 const STEP_BUDGET_MS = 80_000; // no new step starts after this, so the reply returns before the client gives up
 
@@ -63,7 +75,7 @@ Deno.serve(async (request) => {
   const supabase = await authenticate(request);
   if (!supabase) return fail(401, "UNAUTHENTICATED", "Sign in to use the assistant.");
 
-  let input: { text?: unknown; image?: unknown; probe?: unknown; mode?: unknown };
+  let input: { text?: unknown; image?: unknown; probe?: unknown; mode?: unknown; device?: unknown };
   try { input = await request.json(); } catch { return fail(400, "INVALID_ARGUMENT", "Body must be JSON."); }
   // Lets the client show "model not set up" or "not working" instead of failing on the first message.
   if (input.probe === true) return reply(200, await modelStatus());
@@ -78,23 +90,27 @@ Deno.serve(async (request) => {
     return fail(400, "INVALID_ARGUMENT", "Image must be a PNG or JPEG data URL under the size limit.");
   }
 
-  const [history, memories] = await Promise.all([
+  const from = typeof input.device === "string" && /^[0-9a-f-]{36}$/.test(input.device) ? input.device : "";
+  const [history, memories, devices] = await Promise.all([
     supabase.from("mnaka_messages").select("role, content").order("created_at", { ascending: false }).limit(20),
     supabase.from("mnaka_memories").select("content").order("created_at", { ascending: true }).limit(50),
+    supabase.from("mnaka_devices").select("id, name, kind, facts, online").order("created_at", { ascending: true }).limit(20),
   ]);
   if (history.error || memories.error) return fail(503, "STORAGE_UNAVAILABLE", "Account storage is unavailable.");
   const remembered = memories.data.length
     ? "\n\nFacts the user asked you to remember:\n" + memories.data.map((row) => "- " + row.content).join("\n")
     : "";
+  // Devices are optional context: a project without the table, or a failed read, means none.
+  const context = remembered + (devices.error ? "" : describeDevices(devices.data, from));
   const turns: ChatTurn[] = history.data.reverse().map((row) => ({ role: row.role === "user" ? "user" : "assistant", text: row.content }));
   turns.push({
     role: "user", text,
     ...(imageParts ? { image: { mediaType: imageParts[1] as "image/png" | "image/jpeg", base64: imageParts[2] } } : {}),
   });
   // Conversation is quick back-and-forth: low effort keeps replies fast and inexpensive.
-  const answer = mode === "autonomous" ? await workThrough(SYSTEM + remembered, turns)
-    : mode === "developer" ? await completeChat({ system: SYSTEM + DEVELOPER + remembered, turns, maxTokens: 16000, effort: "medium" })
-    : await completeChat({ system: SYSTEM + remembered, turns, maxTokens: 16000, effort: "low" });
+  const answer = mode === "autonomous" ? await workThrough(SYSTEM + context, turns)
+    : mode === "developer" ? await completeChat({ system: SYSTEM + DEVELOPER + context, turns, maxTokens: 16000, effort: "medium" })
+    : await completeChat({ system: SYSTEM + context, turns, maxTokens: 16000, effort: "low" });
   if (answer instanceof Response) return answer;
   const answerText = answer.text.slice(0, 60000);
 

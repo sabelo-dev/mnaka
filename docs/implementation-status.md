@@ -631,3 +631,26 @@ stand-in Messages API produced the expected calls for each mode and rejected an 
 one; twelve targets pass; the restyled selector was checked in headless Chrome (release
 `ae9661632652`). Not verified: any mode against the real model, and the path where a
 step fails part-way through.
+
+## Connecting the device MNAKA runs on
+
+Computer Control now has a Devices card. A signed-in user can connect the device MNAKA is
+running on (desktop app, browser or Android): the install registers a row in
+`mnaka_devices` with a name the user chooses and a fixed set of facts (operating system,
+CPU, screen size, locale, time zone, and the browser's user agent on the web). The screen
+lists exactly what will be saved before the user connects. While MNAKA is open the device
+reports in once a minute; the server's clock decides `last_seen`, and a device silent for
+150 seconds shows as offline. The card lists all of the account's devices and can remove
+any of them. An account holds at most 20.
+
+The `assistant` function adds the connected devices to the model's context and marks the
+one the message came from, so the model can answer with the device in mind. Only the
+listed facts are passed on, as single lines. Connecting gives no control: nothing can run
+on a connected device, read its files or see its screen, and the interface says so.
+
+Verified: `connectingThisDeviceRegistersItAndTellsTheModel` in `live_tests`; the migration
+in PGlite (ownership, limits, online status, 21 checks); the function under Deno against
+a stand-in; connect and list in headless Chrome; and on the real project, where the
+migration is applied (2026-10-12) and `project_selftest.py` passes its nine device checks.
+Not verified: the model using the device facts on the real project (the model key is still
+refused); the desktop and Android builds by hand; two real devices at once.

@@ -4,8 +4,9 @@
 #include <QNetworkReply>
 
 namespace mnaka {
-GatewayModelProvider::GatewayModelProvider(QUrl projectUrl, QString publishableKey, std::shared_ptr<SessionToken> token)
-    : m_projectUrl(std::move(projectUrl)), m_key(std::move(publishableKey)), m_token(std::move(token)) {}
+GatewayModelProvider::GatewayModelProvider(QUrl projectUrl, QString publishableKey, std::shared_ptr<SessionToken> token,
+    std::shared_ptr<SessionToken> device)
+    : m_projectUrl(std::move(projectUrl)), m_key(std::move(publishableKey)), m_token(std::move(token)), m_device(std::move(device)) {}
 
 QUrl GatewayModelProvider::endpoint(const QUrl &projectUrl) {
     return QUrl(projectUrl.toString(QUrl::StripTrailingSlash) + "/functions/v1/assistant");
@@ -28,6 +29,8 @@ bool GatewayModelProvider::start(QUuid id, QJsonObject request) {
     const auto mode = request["mode"].toString();
     QJsonObject body{{"text", text}};
     if (mode == "developer" || mode == "autonomous") body["mode"] = mode;
+    // Says which connected device the message came from, so the model can answer with it in mind.
+    if (const auto device = m_device ? m_device->get() : QString(); !device.isEmpty()) body["device"] = device;
     auto *reply = m_network->post(call, QJsonDocument(body).toJson(QJsonDocument::Compact));
     m_replies.insert(id, reply);
     connect(reply, &QNetworkReply::finished, this, [this, id, reply] {
