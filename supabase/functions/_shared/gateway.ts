@@ -1,9 +1,7 @@
-// Shared by the account functions: CORS, replies, caller verification and the call to the
-// owner's own model over an OpenAI-compatible chat completions endpoint.
-//
-// Secrets: MNAKA_LLM_BASE_URL (e.g. https://llm.example.com/v1), MNAKA_LLM_MODEL, and
-// MNAKA_LLM_API_KEY if the endpoint needs one. The endpoint must be reachable from Supabase.
+// Shared by the account functions: CORS, replies, caller verification, and the call to whichever
+// model provider the project's secrets select (see providers.ts).
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
+import { type ChatRequest, type ChatResult, ProviderError, selectProvider } from "./providers.ts";
 
 export const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -24,31 +22,24 @@ export async function authenticate(request: Request): Promise<SupabaseClient | n
   return user ? supabase : null;
 }
 
-export const modelConfigured = () => Boolean((Deno.env.get("MNAKA_LLM_BASE_URL") ?? "").trim() && (Deno.env.get("MNAKA_LLM_MODEL") ?? "").trim());
+// What the client is told about the model: whether one is usable, and which. No endpoint or key.
+export function modelStatus(): { configured: boolean; provider: string; model: string } {
+  const { provider } = selectProvider();
+  return { configured: provider !== null, provider: provider?.id ?? "", model: provider?.model() ?? "" };
+}
 
-// Returns the model's text, or a ready error response.
-export async function completeChat(messages: unknown[], maxTokens: number): Promise<{ text: string; model: string } | Response> {
-  const base = (Deno.env.get("MNAKA_LLM_BASE_URL") ?? "").replace(/\/+$/, "");
-  const model = Deno.env.get("MNAKA_LLM_MODEL") ?? "";
-  if (!base || !model) return fail(503, "PROVIDER_UNAVAILABLE", "No model endpoint is configured for this workspace.");
+// Returns the model's reply, or a ready error response.
+export async function completeChat(request: ChatRequest): Promise<ChatResult | Response> {
+  const { provider, reason } = selectProvider();
+  if (!provider) {
+    console.error("no model provider:", reason);
+    return fail(503, "PROVIDER_UNAVAILABLE", "No model is set up for this workspace.");
+  }
   try {
-    const key = Deno.env.get("MNAKA_LLM_API_KEY");
-    const response = await fetch(base + "/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...(key ? { Authorization: "Bearer " + key } : {}) },
-      body: JSON.stringify({ model, messages, max_tokens: maxTokens, stream: false }),
-      signal: AbortSignal.timeout(110_000),
-    });
-    if (!response.ok) {
-      console.error("model endpoint status", response.status);
-      return fail(502, "PROVIDER_UNAVAILABLE", "The model endpoint returned an error.");
-    }
-    const content = (await response.json())?.choices?.[0]?.message?.content;
-    const text = typeof content === "string" ? content.trim() : "";
-    if (!text) return fail(502, "PROVIDER_UNAVAILABLE", "The model returned an empty reply.");
-    return { text, model };
+    return await provider.complete(request);
   } catch (error) {
-    console.error("model endpoint unreachable", error instanceof Error ? error.name : "error");
-    return fail(502, "PROVIDER_UNAVAILABLE", "The model endpoint could not be reached.");
+    if (error instanceof ProviderError) return fail(error.status === 200 ? 422 : error.status, error.code, error.message);
+    console.error("model provider failed", error instanceof Error ? error.name : "error");
+    return fail(502, "PROVIDER_UNAVAILABLE", "The model provider failed.");
   }
 }

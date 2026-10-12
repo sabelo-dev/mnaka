@@ -39,10 +39,12 @@ bool GatewayModelProvider::start(QUuid id, QJsonObject request) {
                 {{"provider", "gateway"}, {"model", body["model"].toString().left(200)}, {"mock", false}});
         } else {
             const auto code = body["code"].toString();
-            emit failed(id, QStringList{"INVALID_ARGUMENT", "UNAUTHENTICATED", "RATE_LIMITED"}.contains(code) ? code : "PROVIDER_UNAVAILABLE");
+            // A model's refusal is not an outage; the task contract's closest code is PERMISSION_DENIED.
+            emit failed(id, code == "REFUSED" ? QString("PERMISSION_DENIED")
+                : QStringList{"INVALID_ARGUMENT", "UNAUTHENTICATED", "RATE_LIMITED"}.contains(code) ? code : "PROVIDER_UNAVAILABLE");
         }
     });
-    emit delta(id, "Waiting for your model…");
+    emit delta(id, "Waiting for the model…");
     return true;
 }
 void GatewayModelProvider::cancel(QUuid id) {

@@ -1,5 +1,5 @@
 // Developer gateway. A signed-in client sends a change request and the text files it concerns;
-// the owner's model returns complete new contents for the files it wants to change. Nothing is
+// the configured model returns complete new contents for the files it wants to change. Nothing is
 // written anywhere by this function: the client shows the difference and the user decides.
 import { authenticate, completeChat, cors, fail, reply } from "../_shared/gateway.ts";
 
@@ -57,10 +57,13 @@ Deno.serve(async (request) => {
   if (total > MAX_TOTAL) return fail(400, "INVALID_ARGUMENT", "The files are too large together.");
 
   const project = files.map((file) => `=== ${file.path} ===\n${file.content}`).join("\n\n");
-  const answer = await completeChat([
-    { role: "system", content: SYSTEM },
-    { role: "user", content: `Request:\n${ask}\n\nProject files:\n\n${project}` },
-  ], 8192);
+  // Code changes repay more thought than conversation does.
+  const answer = await completeChat({
+    system: SYSTEM,
+    turns: [{ role: "user", text: `Request:\n${ask}\n\nProject files:\n\n${project}` }],
+    maxTokens: 16000,
+    effort: "medium",
+  });
   if (answer instanceof Response) return answer;
 
   const parsed = extractObject(answer.text);

@@ -1,7 +1,8 @@
 // Assistant gateway. A signed-in client sends a message (and optionally one image); this function
-// forwards it to the owner's own model and stores the exchange in the caller's history.
-// The model endpoint and its key never reach the browser.
-import { authenticate, completeChat, cors, fail, modelConfigured, reply } from "../_shared/gateway.ts";
+// forwards it to the model provider the project's secrets select and stores the exchange in the
+// caller's history. The provider's endpoint and key never reach the browser.
+import { authenticate, completeChat, cors, fail, modelStatus, reply } from "../_shared/gateway.ts";
+import type { ChatTurn } from "../_shared/providers.ts";
 
 const MAX_TEXT = 4000;
 const MAX_IMAGE = 4_000_000; // characters of data URL
@@ -17,11 +18,13 @@ Deno.serve(async (request) => {
   let input: { text?: unknown; image?: unknown; probe?: unknown };
   try { input = await request.json(); } catch { return fail(400, "INVALID_ARGUMENT", "Body must be JSON."); }
   // Lets the client show "model not set up" instead of failing on the first message. No model call is made.
-  if (input.probe === true) return reply(200, { configured: modelConfigured() });
+  if (input.probe === true) return reply(200, modelStatus());
   const text = typeof input.text === "string" ? input.text.trim() : "";
   if (text.length < 1 || text.length > MAX_TEXT) return fail(400, "INVALID_ARGUMENT", "Message must be 1 to 4000 characters.");
   const image = input.image === undefined ? null : input.image;
-  if (image !== null && (typeof image !== "string" || image.length > MAX_IMAGE || !/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(image))) {
+  const imageParts = typeof image === "string" && image.length <= MAX_IMAGE
+    ? image.match(/^data:(image\/png|image\/jpeg);base64,([A-Za-z0-9+/=]+)$/) : null;
+  if (image !== null && !imageParts) {
     return fail(400, "INVALID_ARGUMENT", "Image must be a PNG or JPEG data URL under the size limit.");
   }
 
@@ -33,11 +36,13 @@ Deno.serve(async (request) => {
   const remembered = memories.data.length
     ? "\n\nFacts the user asked you to remember:\n" + memories.data.map((row) => "- " + row.content).join("\n")
     : "";
-  const answer = await completeChat([
-    { role: "system", content: SYSTEM + remembered },
-    ...history.data.reverse().map((row) => ({ role: row.role, content: row.content })),
-    { role: "user", content: image ? [{ type: "text", text }, { type: "image_url", image_url: { url: image } }] : text },
-  ], 1024);
+  const turns: ChatTurn[] = history.data.reverse().map((row) => ({ role: row.role === "user" ? "user" : "assistant", text: row.content }));
+  turns.push({
+    role: "user", text,
+    ...(imageParts ? { image: { mediaType: imageParts[1] as "image/png" | "image/jpeg", base64: imageParts[2] } } : {}),
+  });
+  // Conversation is quick back-and-forth: low effort keeps replies fast and inexpensive.
+  const answer = await completeChat({ system: SYSTEM + remembered, turns, maxTokens: 16000, effort: "low" });
   if (answer instanceof Response) return answer;
   const answerText = answer.text.slice(0, 60000);
 
@@ -45,8 +50,8 @@ Deno.serve(async (request) => {
   // Distinct timestamps keep the pair in order when history is read back.
   const now = Date.now();
   const stored = await supabase.from("mnaka_messages").insert([
-    { role: "user", content: image ? text + "\n[image attached]" : text, created_at: new Date(now).toISOString() },
+    { role: "user", content: imageParts ? text + "\n[image attached]" : text, created_at: new Date(now).toISOString() },
     { role: "assistant", content: answerText, created_at: new Date(now + 1).toISOString() },
   ]);
-  return reply(200, { text: answerText, model: answer.model, saved: !stored.error });
+  return reply(200, { text: answerText, model: answer.model, provider: answer.provider, saved: !stored.error });
 });

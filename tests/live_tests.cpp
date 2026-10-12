@@ -50,7 +50,7 @@ public:
                 else if (path == "/auth/v1/logout") status = 204;
                 else if (lastAuthorization != "Bearer access-1") { status = 401; answer = QJsonDocument(QJsonObject{{"code", "UNAUTHENTICATED"}}); }
                 else if (path == "/functions/v1/assistant" && body["probe"].toBool())
-                    answer = QJsonDocument(QJsonObject{{"configured", modelConfigured}});
+                    answer = QJsonDocument(QJsonObject{{"configured", modelConfigured}, {"provider", "anthropic"}, {"model", modelConfigured ? "test-model" : ""}});
                 else if (path == "/functions/v1/assistant") {
                     lastAssistantBody = body; status = assistantStatus;
                     answer = QJsonDocument(status == 200 ? QJsonObject{{"text", "Reply to: " + body["text"].toString()}, {"model", "test-model"}, {"saved", true}}
@@ -161,8 +161,9 @@ private slots:
         QCOMPARE(model.accountEmail(), QString("user@example.test"));
         QTRY_COMPARE(model.messages().size(), 2);
         QCOMPARE(model.messages().first().toMap()["text"].toString(), QString("earlier question"));
-        QVERIFY(status(model, "assistant").contains("Your model"));
+        QVERIFY(status(model, "assistant").contains("Model via"));
         QTRY_COMPARE(model.modelStatus(), QString("ready"));
+        QCOMPARE(model.modelName(), QString("test-model"));
         QVERIFY(status(model, "control").contains("desktop app"));
         for (const auto &value : model.capabilities()) {
             const auto entry = value.toMap();
@@ -258,6 +259,54 @@ private slots:
         QCOMPARE(decoded.size(), QSize(1024, 512));
         model.clearImage();
         QVERIFY(model.imageAnswer().isEmpty());
+    }
+    void wakeWordIsRecognisedOnlyAtTheStart() {
+        const auto request = [](const QString &spoken) { bool woke = false; const auto text = VoiceInput::requestAfterWakeWord(spoken, &woke); return woke ? "[" + text + "]" : QString("ignored"); };
+        QCOMPARE(request("Mnaka please check the weather for me"), QString("[please check the weather for me]"));
+        QCOMPARE(request("Mnaka, open settings."), QString("[open settings.]"));
+        QCOMPARE(request("hey manaka what time is it"), QString("[what time is it]"));
+        QCOMPARE(request("OK Monaka: cancel"), QString("[cancel]"));
+        QCOMPARE(request("em naka open tasks"), QString("[open tasks]"));
+        QCOMPARE(request("Mnaka"), QString("[]"));
+        QCOMPARE(request("Mnaka."), QString("[]"));
+        // Not addressed to MNAKA: the name later in a sentence, or ordinary words.
+        QCOMPARE(request("I told Mnaka to check the weather"), QString("ignored"));
+        QCOMPARE(request("make a note of this"), QString("ignored"));
+        QCOMPARE(request("what a nice day"), QString("ignored"));
+        QCOMPARE(request("hey there"), QString("ignored"));
+        QCOMPARE(request("banana smoothie please"), QString("ignored"));
+        QCOMPARE(request(""), QString("ignored"));
+    }
+    void handsFreeActsOnlyOnAddressedSpeech() {
+        VoiceInput voice;
+        QSignalSpy heard(&voice, &VoiceInput::recognized);
+        voice.setHandsFree(true);
+        voice.handleEvent("final", "did you see the match last night");
+        voice.handleEvent("final", "I think Mnaka is listening");
+        QCOMPARE(heard.size(), 0); // bystander speech goes nowhere
+        QVERIFY(voice.partial().isEmpty());
+        voice.handleEvent("final", "Mnaka please check the weather for me");
+        QCOMPARE(heard.size(), 1);
+        QCOMPARE(heard.last().first().toString(), QString("please check the weather for me"));
+        // The name on its own opens a short window for the request.
+        voice.handleEvent("final", "Mnaka");
+        QVERIFY(voice.awaitingRequest());
+        QCOMPARE(heard.size(), 1);
+        voice.handleEvent("final", "open settings");
+        QCOMPARE(heard.size(), 2);
+        QCOMPARE(heard.last().first().toString(), QString("open settings"));
+        QVERIFY(!voice.awaitingRequest());
+        voice.handleEvent("final", "open settings"); // window closed: ignored again
+        QCOMPARE(heard.size(), 2);
+        // A refused microphone turns hands-free off rather than retrying for ever.
+        voice.handleEvent("error", "not-allowed");
+        QVERIFY(!voice.handsFree());
+        QVERIFY(voice.notice().contains("refused"));
+        // Without hands-free, a pressed microphone sends whatever was said, name or not.
+        voice.handleEvent("final", "what is the capital of France");
+        QCOMPARE(heard.last().first().toString(), QString("what is the capital of France"));
+        voice.handleEvent("final", "Mnaka open tasks");
+        QCOMPARE(heard.last().first().toString(), QString("open tasks"));
     }
     void lineDiffReportsExactChanges() {
         const auto same = mnaka::diffLines("a\nb\n", "a\nb\n");

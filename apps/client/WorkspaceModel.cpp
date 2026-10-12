@@ -42,7 +42,7 @@ std::unique_ptr<QSettings> sessionStore() {
 // What each engine entry means while an account session is running.
 QHash<QString, QString> liveEngineStatus() {
     return {{"software", "Needs desktop app"}, {"control", "Needs desktop app"}, {"memory", "Saved to account"},
-        {"skills", "Saved, not executed"}, {"vision", "Via your model"}, {"proactive", "Saved, not scheduled"}};
+        {"skills", "Saved, not executed"}, {"vision", "Via the model"}, {"proactive", "Saved, not scheduled"}};
 }
 // Bounded validation and decode; runs off the UI thread wherever threads exist.
 QPair<QString, QString> decodePreview(QByteArray bytes) {
@@ -89,7 +89,7 @@ WorkspaceModel::WorkspaceModel(QObject *parent) : QObject(parent), m_developer(n
     const auto linkError = qEnvironmentVariable("MNAKA_AUTH_ERROR");
     if (!linkError.isEmpty() && m_accountNotice.isEmpty())
         m_accountNotice = linkError == "otp_expired"
-            ? "That email link has expired or was already used. Enter your email below and choose Resend confirmation email."
+            ? "That email link has expired or was already used. Enter your email and choose Resend confirmation email."
             : "That email link could not be used" + (qEnvironmentVariable("MNAKA_AUTH_ERROR_DESCRIPTION").isEmpty() ? QString(".")
                 : ": " + qEnvironmentVariable("MNAKA_AUTH_ERROR_DESCRIPTION").left(200) + ".");
     // A session from an email link wins over a remembered one.
@@ -281,10 +281,10 @@ void WorkspaceModel::syncAccount() {
     m_mock = false; m_live = signedIn;
     m_memories.clear(); m_skills.clear(); m_rules.clear(); m_dataNotice.clear();
     m_imageAnswer.clear(); m_imageInterpreting = false;
-    m_modelStatus = "unknown";
+    m_modelStatus = "unknown"; m_modelName.clear();
     m_developer->setGateway(signedIn ? m_data : nullptr);
     if (signedIn) {
-        startRuntime(new GatewayModelProvider(m_auth->projectUrl(), m_auth->publishableKey(), m_token), "Your model, via account gateway", liveEngineStatus());
+        startRuntime(new GatewayModelProvider(m_auth->projectUrl(), m_auth->publishableKey(), m_token), "Model via account gateway", liveEngineStatus());
         loadAccountData();
     }
     emit messagesChanged(); emit tasksChanged(); emit capabilitiesChanged(); emit dataChanged(); emit imageChanged();
@@ -296,6 +296,7 @@ void WorkspaceModel::loadAccountData() {
     m_data->invoke("assistant", {{"probe", true}}, [this, generation](int status, QJsonDocument body) {
         if (generation != m_sessionGeneration || status != 200 || !body.object()["configured"].isBool()) return;
         m_modelStatus = body.object()["configured"].toBool() ? "ready" : "missing";
+        m_modelName = body.object()["model"].toString().left(100);
         emit changed();
     });
     m_data->list("mnaka_messages", "select=role,content&order=created_at.desc&limit=50", [this, generation](int status, QJsonDocument body) {
@@ -419,7 +420,8 @@ void WorkspaceModel::interpretImage(QString question) {
         }
         if (imageGeneration != m_imageGeneration) return;
         m_imageInterpreting = false;
-        m_imageAnswer = ok ? answer.left(65536) : status == 503 || status == 502 ? "The model endpoint is not available." : "The image could not be interpreted.";
+        m_imageAnswer = ok ? answer.left(65536) : status == 422 ? "The model declined this request."
+            : status == 503 || status == 502 ? "The model is not available." : "The image could not be interpreted.";
         emit imageChanged();
     });
 }
@@ -518,7 +520,7 @@ void WorkspaceModel::clearHistory() {
         // Restarting the runtime drops this session's tasks; the saved conversation is deleted on the server.
         const auto generation = m_sessionGeneration;
         stopRuntime();
-        startRuntime(new GatewayModelProvider(m_auth->projectUrl(), m_auth->publishableKey(), m_token), "Your model, via account gateway", liveEngineStatus());
+        startRuntime(new GatewayModelProvider(m_auth->projectUrl(), m_auth->publishableKey(), m_token), "Model via account gateway", liveEngineStatus());
         m_data->remove("mnaka_messages", {}, [this, generation](int status, QJsonDocument) {
             if (generation != m_sessionGeneration || (status >= 200 && status < 300)) return;
             m_notice = "The saved conversation could not be deleted."; emit changed();

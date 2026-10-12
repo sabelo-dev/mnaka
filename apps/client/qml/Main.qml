@@ -70,6 +70,8 @@ ApplicationWindow {
         if (!workspace.submit(spoken, mode.currentText)) composer.text = spoken // keep what was said so it can be sent later
     }
     property string voiceNotice: ""
+    readonly property bool voiceActive: workspace.voice.awaitingRequest || (!workspace.voice.handsFree && workspace.voice.listening)
+    readonly property bool voiceWaiting: workspace.voice.handsFree && workspace.voice.listening && !workspace.voice.awaitingRequest
     function scrollLimit() { return Math.max(0, scroll.contentHeight - scroll.height) }
     function scrollBy(distance) { window.glideTo((glide.running ? glide.to : scroll.contentItem.contentY) + distance) }
     function glideTo(position) {
@@ -108,16 +110,17 @@ ApplicationWindow {
         const experimental = text => state("EXPERIMENTAL", "new", text)
         const row = (key, name, value) => ({ key: key, name: name, label: value.label, tone: value.tone, text: value.text })
         return [
-            row("assistant", "Assistant", !signedIn ? signIn("Sign in to talk to your own model.") : noModel ? needsModel : available("Answers through your own model.")),
-            row("memory", "Memory", !signedIn ? signIn("Sign in to save facts for your model.") : available("Facts you save are sent to your model with every message.")),
+            row("assistant", "Assistant", !signedIn ? signIn("Sign in to talk to the assistant.") : noModel ? needsModel : available("Answers through " + window.modelLabel + ".")),
+            row("memory", "Memory", !signedIn ? signIn("Sign in to save facts for the model.") : available("Facts you save are sent to the model with every message.")),
             row("vision", "Vision", !signedIn ? signIn("Image preview works now; sign in to interpret images.") : noModel ? needsModel : experimental("Interprets an image you choose. Needs a model that accepts images.")),
             row("developer", "Developer workspace", !signedIn ? signIn("You can add files now; sign in to ask for changes.") : noModel ? needsModel : experimental("Proposes changes to files you add. It cannot build or test.")),
             row("skills", "Skills", !signedIn ? signIn("Inspection works now; sign in to save manifests.") : experimental("Saves manifests that pass inspection. Nothing runs them yet.")),
             row("proactive", "Proactive rules", !signedIn ? signIn("Sign in to save rules.") : experimental("Saves your rules. Nothing schedules or runs them yet.")),
-            row("voice", "Voice input", workspace.voice.available ? experimental("Press the microphone and speak. Recognised by this browser.") : state("UNAVAILABLE", "off", "Needs the web version in Chrome, Edge or Safari.")),
+            row("voice", "Voice input", workspace.voice.available ? experimental(workspace.voice.handsFree ? "Hands-free: say \"Mnaka\" and your request. Recognised by this browser." : "Press the microphone, or turn on hands-free and say \"Mnaka\".") : state("UNAVAILABLE", "off", "Needs the web version in Chrome, Edge or Safari.")),
             row("control", "Computer control", state("DESKTOP REQUIRED", "off", "Needs a paired desktop app, which is not built yet."))
         ]
     }
+    readonly property string modelLabel: workspace.modelName.length > 0 ? workspace.modelName : "the configured model"
     function serviceFor(key) {
         const rows = window.serviceRows()
         for (let i = 0; i < rows.length; ++i) if (rows[i].key === key) return rows[i]
@@ -209,12 +212,16 @@ ApplicationWindow {
         Image { visible: avatar.logo; anchors.fill: parent; anchors.margins: 6; source: "assets/logo.png"; sourceSize: Qt.size(64, 64); fillMode: Image.PreserveAspectFit }
     }
     component PrimaryButton: Button {
+        Keys.onReturnPressed: clicked()
+        Keys.onEnterPressed: clicked()
         id: primary
         implicitHeight: 38; leftPadding: 18; rightPadding: 18
         contentItem: Label { text: primary.text; color: primary.enabled ? "#021006" : window.muted; font.weight: Font.DemiBold; font.pixelSize: 13; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
         background: Rectangle { radius: 2; color: !primary.enabled ? "#123322" : primary.down ? "#00b85c" : primary.hovered ? "#5dffa6" : window.accent; border.color: primary.activeFocus ? window.cyan : "transparent" }
     }
     component GhostButton: Button {
+        Keys.onReturnPressed: clicked()
+        Keys.onEnterPressed: clicked()
         id: ghost
         implicitHeight: 38; leftPadding: 16; rightPadding: 16
         contentItem: Label { text: ghost.text; color: ghost.enabled ? window.ink : window.muted; font.pixelSize: 13; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
@@ -327,6 +334,8 @@ ApplicationWindow {
             }
         }
         Button {
+            Keys.onReturnPressed: clicked()
+            Keys.onEnterPressed: clicked()
             id: engineButton; anchors.fill: parent; flat: true; text: ""
             Accessible.name: "Open " + engine.name
             background: Rectangle { color: "transparent"; radius: 2; border.color: engineButton.activeFocus ? window.cyan : "transparent" }
@@ -378,6 +387,8 @@ ApplicationWindow {
                 Repeater {
                     model: window.pages
                     Button {
+                        Keys.onReturnPressed: clicked()
+                        Keys.onEnterPressed: clicked()
                         id: navButton
                         required property int index
                         required property string modelData
@@ -400,6 +411,8 @@ ApplicationWindow {
                 }
                 Item { Layout.fillHeight: true }
                 Button {
+                    Keys.onReturnPressed: clicked()
+                    Keys.onEnterPressed: clicked()
                     id: accountChip
                     Layout.fillWidth: true; implicitHeight: 54
                     Accessible.name: "Account and settings"
@@ -466,7 +479,7 @@ ApplicationWindow {
                         Layout.fillWidth: true; Layout.leftMargin: content.gutter; Layout.rightMargin: content.gutter
                         implicitHeight: statusText.implicitHeight + 24
                         color: "#071209"; border.color: "#1f5a3c"
-                        Caption { id: statusText; anchors.fill: parent; anchors.margins: 12; color: workspace.connected && workspace.modelStatus === "missing" ? "#f5d28a" : "#9be7b8"; text: workspace.connected && workspace.modelStatus === "missing" ? "Signed in, but no model is set up yet, so the assistant cannot answer. Set MNAKA_LLM_BASE_URL and MNAKA_LLM_MODEL as secrets on your Supabase project. Memory, skills and rules still save to your account." : workspace.connected ? "Connected. Messages go to your own model through your account gateway. Conversations, memories, skills and rules are saved to your account as plain text." : workspace.mockSession ? "MOCK SESSION. Replies come from a deterministic fixture, not a reasoning model. Tasks run through the broker's fixture tools only: no files, applications or networks are touched, and nothing is saved when you close MNAKA." : (workspace.accountConfigured ? "Signed out. Sign in under Settings to use the assistant. Nothing is sent or saved while you are signed out." : "No account service is configured for this build, so the assistant is unavailable.") }
+                        Caption { id: statusText; anchors.fill: parent; anchors.margins: 12; color: workspace.connected && workspace.modelStatus === "missing" ? "#f5d28a" : "#9be7b8"; text: workspace.connected && workspace.modelStatus === "missing" ? "Signed in, but no model is set up yet, so the assistant cannot answer. Set a model provider in your Supabase project secrets: ANTHROPIC_API_KEY, or MNAKA_LLM_BASE_URL with MNAKA_LLM_MODEL. Memory, skills and rules still save to your account." : workspace.connected ? "Connected to " + window.modelLabel + ". Messages go to the model set on your account gateway. Conversations, memories, skills and rules are saved to your account as plain text." : workspace.mockSession ? "MOCK SESSION. Replies come from a deterministic fixture, not a reasoning model. Tasks run through the broker's fixture tools only: no files, applications or networks are touched, and nothing is saved when you close MNAKA." : (workspace.accountConfigured ? "Signed out. Sign in under Settings to use the assistant. Nothing is sent or saved while you are signed out." : "No account service is configured for this build, so the assistant is unavailable.") }
                     }
                     GridLayout {
                         visible: window.page === 0
@@ -551,15 +564,19 @@ ApplicationWindow {
                                             }
                                         }
                                         Button {
+                                            Keys.onReturnPressed: clicked()
+                                            Keys.onEnterPressed: clicked()
                                             id: talk
                                             visible: workspace.voice.available
                                             implicitWidth: 40; implicitHeight: 40
-                                            Accessible.name: workspace.voice.listening ? "Stop listening" : "Speak a message"
-                                            onClicked: workspace.voice.listening ? workspace.voice.stop() : workspace.voice.start()
-                                            contentItem: Item { Icon { anchors.centerIn: parent; path: window.icons.mic; tint: workspace.voice.listening ? "#021006" : window.cyan; size: 18 } }
-                                            background: Rectangle { radius: 2; color: workspace.voice.listening ? "#ffb000" : talk.hovered ? "#0b2015" : "transparent"; border.color: talk.activeFocus || !workspace.voice.listening ? "#1f5a3c" : "#ffb000" }
+                                            Accessible.name: window.voiceActive ? "Stop listening" : "Speak a message"
+                                            onClicked: window.voiceActive ? workspace.voice.stop() : workspace.voice.start()
+                                            contentItem: Item { Icon { anchors.centerIn: parent; path: window.icons.mic; tint: window.voiceActive ? "#021006" : window.cyan; size: 18 } }
+                                            background: Rectangle { radius: 2; color: window.voiceActive ? "#ffb000" : talk.hovered ? "#0b2015" : "transparent"; border.color: talk.activeFocus || !window.voiceActive ? "#1f5a3c" : "#ffb000" }
                                         }
                                         Button {
+                                            Keys.onReturnPressed: clicked()
+                                            Keys.onEnterPressed: clicked()
                                             id: send
                                             implicitWidth: 40; implicitHeight: 40
                                             enabled: workspace.busy || composer.text.trim().length > 0
@@ -584,30 +601,48 @@ ApplicationWindow {
                                 ColumnLayout {
                                     id: orbColumn
                                     anchors.centerIn: parent; width: parent.width - 40; spacing: 6
-                                    Orb { Layout.alignment: Qt.AlignHCenter; active: workspace.busy || workspace.voice.listening; size: window.compact ? 170 : 230 }
-                                    Label { Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 6; text: workspace.voice.listening ? "Listening…" : workspace.busy ? workspace.state : workspace.connected ? (workspace.modelStatus === "missing" ? "Model not set up" : workspace.voice.available ? "Ready to listen" : "Ready") : workspace.mockSession ? "Mock session ready" : "Not connected"; color: workspace.voice.listening ? "#ffb000" : window.ink; font.pixelSize: 19; font.weight: Font.DemiBold }
+                                    Orb { Layout.alignment: Qt.AlignHCenter; active: workspace.busy || window.voiceActive || workspace.voice.partial.length > 0; size: window.compact ? 170 : 230 }
+                                    Label { Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 6; text: window.voiceActive ? "Listening…" : workspace.busy ? workspace.state : window.voiceWaiting ? "Say \"Mnaka\"" : workspace.connected ? (workspace.modelStatus === "missing" ? "Model not set up" : workspace.voice.available ? "Ready to listen" : "Ready") : workspace.mockSession ? "Mock session ready" : "Not connected"; color: window.voiceActive ? "#ffb000" : window.ink; font.pixelSize: 19; font.weight: Font.DemiBold }
                                     Caption {
                                         Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter
-                                        color: workspace.voice.listening && workspace.voice.partial.length > 0 ? window.ink : window.muted
-                                        text: workspace.voice.listening ? (workspace.voice.partial.length > 0 ? workspace.voice.partial : "Speak now. Press the microphone again to finish.")
+                                        color: workspace.voice.partial.length > 0 ? window.ink : window.muted
+                                        text: window.voiceActive ? (workspace.voice.partial.length > 0 ? workspace.voice.partial : workspace.voice.handsFree ? "Yes? Say your request." : "Speak now. Press the microphone again to finish.")
+                                            : window.voiceWaiting && workspace.voice.partial.length > 0 ? workspace.voice.partial
+                                            : window.voiceWaiting && workspace.voice.notice.length === 0 && window.voiceNotice.length === 0 && !workspace.busy ? "Hands-free is on. Say \"Mnaka\" and then your request, for example \"Mnaka, open settings\"."
                                             : workspace.voice.notice.length > 0 ? workspace.voice.notice
                                             : window.voiceNotice.length > 0 ? window.voiceNotice
                                             : workspace.state === "Awaiting approval" ? "Review the requested action under Approval required."
                                             : workspace.busy ? "Working on your request."
                                             : workspace.voice.available ? (workspace.connected ? "Press the microphone and speak, or type a message." : "Sign in under Settings to connect. You can still say \"open settings\".")
-                                            : workspace.connected ? "Type a message to talk to your model. Voice input needs a browser with speech recognition." : workspace.mockSession ? "Type a message to run a fixture task." : "Sign in under Settings to connect."
+                                            : workspace.connected ? "Type a message to talk to the model. Voice input needs a browser with speech recognition." : workspace.mockSession ? "Type a message to run a fixture task." : "Sign in under Settings to connect."
                                     }
                                     Button {
+                                        Keys.onReturnPressed: clicked()
+                                        Keys.onEnterPressed: clicked()
                                         id: orbTalk
                                         visible: workspace.voice.available
                                         Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 10
                                         implicitWidth: 56; implicitHeight: 56
-                                        Accessible.name: workspace.voice.listening ? "Stop listening" : "Start listening"
-                                        onClicked: workspace.voice.listening ? workspace.voice.stop() : workspace.voice.start()
-                                        contentItem: Item { Icon { anchors.centerIn: parent; path: window.icons.mic; tint: workspace.voice.listening ? "#021006" : window.cyan; size: 24 } }
-                                        background: Rectangle { radius: 28; color: workspace.voice.listening ? "#ffb000" : orbTalk.hovered ? "#0b2015" : "#020a06"; border.color: workspace.voice.listening ? "#ffb000" : orbTalk.activeFocus ? window.ink : window.cyan; border.width: 2 }
+                                        Accessible.name: window.voiceActive ? "Stop listening" : "Start listening"
+                                        onClicked: window.voiceActive ? workspace.voice.stop() : workspace.voice.start()
+                                        contentItem: Item { Icon { anchors.centerIn: parent; path: window.icons.mic; tint: window.voiceActive ? "#021006" : window.cyan; size: 24 } }
+                                        background: Rectangle { radius: 28; color: window.voiceActive ? "#ffb000" : orbTalk.hovered ? "#0b2015" : "#020a06"; border.color: window.voiceActive ? "#ffb000" : orbTalk.activeFocus ? window.ink : window.cyan; border.width: 2 }
                                     }
-                                    Caption { visible: workspace.voice.available; Layout.fillWidth: true; Layout.topMargin: 4; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 11; text: "Speech is recognised by this browser. In Chrome and Edge the audio goes to the browser vendor's speech service; MNAKA and your model receive only the text." }
+                                    Switch {
+                                        visible: workspace.voice.available
+                                        Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 6
+                                        text: "Hands-free: listen for \"Mnaka\""
+                                        checked: workspace.voice.handsFree
+                                        Accessible.name: "Hands-free listening for the word Mnaka"
+                                        onToggled: workspace.voice.handsFree = checked
+                                    }
+                                    Caption {
+                                        visible: workspace.voice.available; Layout.fillWidth: true; Layout.topMargin: 4; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 11
+                                        color: workspace.voice.handsFree ? "#f5d28a" : window.muted
+                                        text: workspace.voice.handsFree
+                                            ? "Hands-free keeps the microphone on while this page is open. The browser hears everything said nearby and, in Chrome and Edge, sends that audio to the browser vendor's speech service. MNAKA acts only on speech that starts with \"Mnaka\" and discards the rest. Turn it off when you are not using it."
+                                            : "Speech is recognised by this browser. In Chrome and Edge the audio goes to the browser vendor's speech service; MNAKA and the model receive only the text."
+                                    }
                                 }
                             }
                             GridLayout {
@@ -770,7 +805,7 @@ ApplicationWindow {
                                     PrimaryButton { text: "Add files"; implicitHeight: 32; enabled: !dev.session.busy; onClicked: dev.session.browserFiles ? dev.session.pickFiles() : projectPicker.open() }
                                     GhostButton { text: "Clear"; implicitHeight: 32; enabled: dev.session.files.length > 0 && !dev.session.busy; onClicked: dev.session.clearProject() }
                                 }
-                                Caption { visible: dev.session.files.length === 0; Layout.fillWidth: true; text: "Add the text files a change concerns: up to 24 files, 64 KiB each. They stay in this session until you ask for a change; then they are sent to your model." }
+                                Caption { visible: dev.session.files.length === 0; Layout.fillWidth: true; text: "Add the text files a change concerns: up to 24 files, 64 KiB each. They stay in this session until you ask for a change; then they are sent to the model." }
                                 Repeater {
                                     model: dev.session.files
                                     Rectangle {
@@ -810,6 +845,8 @@ ApplicationWindow {
                                     Repeater {
                                         model: ["Diff", "Build output", "Tests"]
                                         Button {
+                                            Keys.onReturnPressed: clicked()
+                                            Keys.onEnterPressed: clicked()
                                             id: tab
                                             required property int index
                                             required property string modelData
@@ -836,8 +873,8 @@ ApplicationWindow {
                                     }
                                     Caption {
                                         visible: !dev.session.hasProposal; Layout.fillWidth: true
-                                        text: dev.session.busy ? "Waiting for your model…" : dev.session.files.length === 0 ? "No proposed changes. Add project files, then describe the change you want below."
-                                            : "No proposed changes. Describe the change you want below; your model replies with edited files and the difference appears here."
+                                        text: dev.session.busy ? "Waiting for the model…" : dev.session.files.length === 0 ? "No proposed changes. Add project files, then describe the change you want below."
+                                            : "No proposed changes. Describe the change you want below; the model replies with edited files and the difference appears here."
                                     }
                                     Repeater {
                                         model: dev.session.proposal
@@ -851,6 +888,8 @@ ApplicationWindow {
                                                 id: fileColumn
                                                 anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 1; spacing: 0
                                                 Button {
+                                                    Keys.onReturnPressed: clicked()
+                                                    Keys.onEnterPressed: clicked()
                                                     id: fileHeader
                                                     Layout.fillWidth: true; implicitHeight: 40
                                                     Accessible.name: (fileDiff.expanded ? "Collapse " : "Expand ") + fileDiff.modelData.path
@@ -983,6 +1022,8 @@ ApplicationWindow {
                                     onAccepted: { workspace.developer.request(text); if (workspace.developer.busy) clear() }
                                 }
                                 Button {
+                                    Keys.onReturnPressed: clicked()
+                                    Keys.onEnterPressed: clicked()
                                     id: devSend
                                     implicitWidth: 44; implicitHeight: 44
                                     enabled: !workspace.developer.busy && devPrompt.text.trim().length > 0
@@ -992,7 +1033,7 @@ ApplicationWindow {
                                     background: Rectangle { radius: 2; color: !devSend.enabled ? "#123322" : devSend.hovered ? "#5dffa6" : window.accent; border.color: devSend.activeFocus ? window.cyan : "transparent" }
                                 }
                             }
-                            Caption { Layout.fillWidth: true; font.pixelSize: 11; text: workspace.connected ? "Sending a request sends every file in the project to your model through your account gateway. File contents are not stored; the request and the model's summary are added to your conversation." : "Sign in under Settings to ask for a change. Files you add stay in this session." }
+                            Caption { Layout.fillWidth: true; font.pixelSize: 11; text: workspace.connected ? "Sending a request sends every file in the project to the model through your account gateway. File contents are not stored; the request and the model's summary are added to your conversation." : "Sign in under Settings to ask for a change. Files you add stay in this session." }
                         }
                     }
                     Card {
@@ -1022,7 +1063,7 @@ ApplicationWindow {
                             id: memoryColumn
                             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 24; spacing: 12
                             Heading { text: "Memory" }
-                            Caption { Layout.fillWidth: true; text: "Facts you save here are sent to your model with every message, and stored in your account as plain text. Projects and indexing need the desktop app." }
+                            Caption { Layout.fillWidth: true; text: "Facts you save here are sent to the model with every message, and stored in your account as plain text. Projects and indexing need the desktop app." }
                             RowLayout {
                                 Layout.fillWidth: true; spacing: 10
                                 Field {
@@ -1175,8 +1216,8 @@ ApplicationWindow {
                                 }
                                 PrimaryButton { text: "Interpret image"; enabled: !workspace.imageInterpreting; onClicked: workspace.interpretImage(visionQuestion.text) }
                             }
-                            Caption { visible: workspace.connected && workspace.imagePreview.length > 0; Layout.fillWidth: true; font.pixelSize: 12; text: "Interpreting sends a reduced copy of this image to your model through your account gateway. The image is not stored; the question and answer are added to your conversation." }
-                            Caption { visible: workspace.imageInterpreting; text: "Waiting for your model…"; color: window.cyan }
+                            Caption { visible: workspace.connected && workspace.imagePreview.length > 0; Layout.fillWidth: true; font.pixelSize: 12; text: "Interpreting sends a reduced copy of this image to the model through your account gateway. The image is not stored; the question and answer are added to your conversation." }
+                            Caption { visible: workspace.imageInterpreting; text: "Waiting for the model…"; color: window.cyan }
                             Label { visible: workspace.imageAnswer.length > 0; text: workspace.imageAnswer; textFormat: Text.PlainText; color: window.ink; wrapMode: Text.WordWrap; font.pixelSize: 14; Layout.fillWidth: true }
                         }
                     }
@@ -1218,9 +1259,9 @@ ApplicationWindow {
                             Repeater {
                                 model: [
                                     "Your conversations, memories, skills and rules are saved in your account as plain text, and only while you are signed in.",
-                                    "Messages, and the files you add in the Developer workspace, are sent to your own model when you ask for something.",
+                                    "Messages, and the files you add in the Developer workspace, are sent to the model set on your account gateway" + (workspace.modelName.length > 0 ? " (currently " + workspace.modelName + ")" : "") + " when you ask for something.",
                                     "An image leaves this device only when you choose Interpret. It is not stored.",
-                                    "The microphone is used only while you press the microphone button. Camera and location are never used.",
+                                    workspace.voice.handsFree ? "Hands-free is on: the microphone stays on while this page is open, and the browser's speech service hears what is said nearby. Camera and location are never used." : "The microphone is used only while you press the microphone button, unless you turn on hands-free. Camera and location are never used.",
                                     workspace.sessionPersists ? "You stay signed in on this device until you sign out. Signing out removes the saved sign-in." : "Your sign-in lasts until you close MNAKA. It is not kept on this device."
                                 ]
                                 RowLayout {
@@ -1244,7 +1285,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 text: !workspace.accountConfigured ? "No account service is configured for this build."
                                     : window.signedIn ? "Signed in as " + workspace.accountEmail + ". " + (workspace.sessionPersists ? "You stay signed in on this device until you sign out." : "The session ends when you close MNAKA.") + " Your conversations, memories, skills and rules are saved to your account."
-                                    : "Your email and password are sent to the configured Supabase project over HTTPS. After you sign in, your messages go to your own model and your data is saved to your account."
+                                    : "Your email and password are sent to the configured Supabase project over HTTPS. After you sign in, your messages go to the model set on your account gateway and your data is saved to your account."
                             }
                             Field {
                                 id: accountEmailField; visible: workspace.accountConfigured && !window.signedIn

@@ -489,3 +489,83 @@ A long account name made the Overview greeting wider than its column, pushing "C
 session" and the composer over the centre column. The greeting now shrinks and elides,
 and its caret is part of the text. Checked in headless Chrome signed in as a long
 address against a stand-in backend with no model configured; twelve targets pass.
+
+## Release versioning, start-up recovery, sign-in flows, capability states
+
+**Releases.** `stage-web.ps1` names a release after the hash of its files and puts them
+under `r/<release>/`; `index.html` is generated to reference that folder and
+`release.json` records the id. Versioned files are served immutable, the page and the
+small files beside it are revalidated, and a running page reloads once if
+`release.json` names a different release. `amplify.yml` refuses to publish a page whose
+release folder is missing. `deploy-web.ps1` (S3) uploads the same layout.
+
+**Start-up.** `mnaka-boot.js` downloads the application itself, so it can show bytes
+and a progress bar, abort a stalled transfer, retry four times with a pause, wait for
+the connection when offline, and end on a message with a "Try again" button. The
+length is checked against the build's.
+
+**Sign-in.** The page takes the result of an email link out of the address bar and
+passes it to the client: an error becomes an explanation on Settings with a "Resend
+confirmation email" action; a confirmation link signs the user in. Sign-up and resend
+ask Supabase to return to this site. The refresh token is remembered in the browser's
+storage for this site and in the Android app's private storage (not on desktop, which
+has no vault adapter for it), restored at start, rotated as it changes, kept when the
+service is unreachable, and forgotten on sign-out or when the server refuses it.
+
+**Capability states.** One list drives Settings and the Overview cards: AVAILABLE,
+EXPERIMENTAL, NOT CONFIGURED, DESKTOP REQUIRED, SIGN IN (and UNAVAILABLE for voice
+where the browser lacks it). The cards now say what a feature does today.
+
+**Keyboard.** Enter and Return now press the focused button; Qt alone answers Space.
+
+Verified: twelve CTest targets, with new cases for restore, refusal, offline restore,
+resend, the unconfirmed-account hint, remembered sessions and email-link results. In
+headless Chrome against a stand-in backend: a throttled download showing progress, a
+blocked download ending in the retry state, a stale page reloading once, an expired
+link, a confirmation link, staying signed in across a reload, Tab and Enter, 200%
+zoom, a refused microphone (simulated) and sign-in while offline. Not verified:
+Amplify's handling of the new cache headers, real email links from Supabase (their
+exact fragment and the Site URL allow-list), a real microphone permission prompt, real
+phones, screen readers, and other browsers. The Android package predates these changes.
+
+## Model provider adapter and Claude as the interim model
+
+`supabase/functions/_shared/providers.ts` is a provider adapter. The functions describe
+a conversation in neutral terms (system text, turns, an optional image, an effort
+level); a provider turns that into one backend's API. Two providers exist:
+`anthropic`, which calls the Messages API through the official SDK, and
+`openai-compatible`, which is the slot for MNAKA's own model (or Ollama, vLLM,
+llama.cpp). Project secrets choose between them on every call
+(`MNAKA_LLM_PROVIDER`, `MNAKA_LLM_MODEL`, `ANTHROPIC_API_KEY`, `MNAKA_LLM_BASE_URL`,
+`MNAKA_LLM_API_KEY`), so replacing the model needs no rebuild and no redeploy of the app
+or the functions. The client only sees which model is active, through the probe.
+
+The interim model is Claude Sonnet 5.5 (`claude-sonnet-5-5`), with server-side refusal
+fallback enabled, `low` effort for conversation and `medium` for the Developer
+workspace. A refusal is reported to the client as such rather than as an outage. The
+wording in the app no longer says "your own model".
+
+Verified under Deno against stand-ins: the Anthropic path (request shape, image input,
+a refusal, a rejected key), switching to the OpenAI-compatible provider by environment
+alone with the Anthropic key still present, and the unconfigured and unknown-provider
+cases. Deployed 2026-10-12. Not verified: a call to the real Anthropic API, because no
+key is set on the project.
+
+## Wake word
+
+Voice input has a hands-free mode: the browser's recogniser stays on and only speech
+that begins with "Mnaka" (optionally after "hey", "ok" or "hi") is acted on; the request
+is what follows. The name on its own opens an eight-second window for the request.
+Recognisers have never heard the name, so a short list of mishearings and near
+spellings also counts. Everything else heard is dropped in `VoiceInput` and is never
+shown, stored or sent to the model. The choice is remembered for the site; a refused
+microphone turns it off.
+
+This is not an on-device wake word. While hands-free is on, the browser streams what
+the microphone hears to its speech service (Google's in Chrome, Microsoft's in Edge);
+the app says so beside the switch. It works only while the page is open and visible,
+and the browser may ask for the microphone again after a reload.
+
+Verified: unit cases for the matcher and for hands-free filtering; twelve targets pass.
+Not verified: real speech. How reliably a recogniser transcribes "Mnaka" is unknown and
+is the main risk; the list of accepted spellings will need tuning from real use.

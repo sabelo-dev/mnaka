@@ -145,7 +145,8 @@ void DeveloperSession::request(QString text) {
         m_busy = false;
         if (status != 200) {
             m_asked = false;
-            say(status == 502 || status == 503 ? "The model endpoint is not available." : status == 401 ? "Sign in again to ask for a change."
+            say(status == 502 || status == 503 ? "The model is not available." : status == 422 ? "The model declined this request."
+                : status == 429 ? "The model is busy. Try again shortly." : status == 401 ? "Sign in again to ask for a change."
                 : "The request was not accepted.");
             return;
         }
@@ -229,7 +230,7 @@ QVariantList DeveloperSession::steps() const {
     QVariantList result;
     result.append(step("Load project files", loaded ? QString("%1 file(s), %2 KiB, held in this session only.").arg(m_files.size()).arg((totalBytes() + 1023) / 1024)
         : "Add the text files the change concerns.", loaded ? "done" : "pending"));
-    result.append(step("Ask your model", m_busy ? "Waiting for your model…" : answered ? "Request sent with the project files." : "Describe the change below.",
+    result.append(step("Ask the model", m_busy ? "Waiting for the model…" : answered ? "Request sent with the project files." : "Describe the change below.",
         m_busy ? "active" : answered ? "done" : "pending"));
     result.append(step("Prepare patch", hasProposal() ? QString("%1 file(s) changed.").arg(m_proposal.size()) : m_applied ? "Patch applied." : "No proposal yet.",
         hasProposal() || m_applied ? "done" : "pending"));

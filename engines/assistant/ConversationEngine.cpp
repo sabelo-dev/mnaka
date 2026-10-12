@@ -13,7 +13,9 @@ ConversationEngine::ConversationEngine(ModelProvider *provider, QObject *parent)
         m_contexts.remove(taskId); m_requests.remove(taskId);
         emit failed(taskId, code, code == "CANCELLED" ? "Planning cancelled."
             : code == "UNAUTHENTICATED" ? "Sign in to use the assistant."
-            : code == "PROVIDER_UNAVAILABLE" ? "The model endpoint is not available."
+            : code == "PROVIDER_UNAVAILABLE" ? "The model is not available."
+            : code == "PERMISSION_DENIED" ? "The model declined this request."
+            : code == "RATE_LIMITED" ? "The model is busy. Try again shortly."
             : "Model provider rejected input.");
     });
     connect(m_provider, &ModelProvider::completed, this, [this](QUuid taskId, QJsonObject result, QJsonObject usage) {
