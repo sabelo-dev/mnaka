@@ -48,10 +48,12 @@ class WorkspaceModel : public QObject {
     Q_PROPERTY(bool sessionPersists READ sessionPersists CONSTANT)
     // True while a signed-in account session runs against the project's own model.
     Q_PROPERTY(bool connected READ connected NOTIFY changed)
-    // Whether the account gateway has a model endpoint: "unknown", "ready" or "missing".
+    // The account gateway's model: "unknown", "ready", "missing" (none set) or "failing" (one is
+    // set but its provider rejects it; modelProblem says why).
     Q_PROPERTY(QString modelStatus READ modelStatus NOTIFY changed)
     // The model the gateway reports, e.g. "claude-sonnet-5-5"; empty until known.
     Q_PROPERTY(QString modelName READ modelName NOTIFY changed)
+    Q_PROPERTY(QString modelProblem READ modelProblem NOTIFY changed)
     // The signed-in user's saved rows. Saving a skill or rule records it; nothing executes it.
     Q_PROPERTY(QVariantList memories READ memories NOTIFY dataChanged)
     Q_PROPERTY(QVariantList skills READ skills NOTIFY dataChanged)
@@ -89,6 +91,7 @@ public:
     bool connected() const { return m_live; }
     QString modelStatus() const { return m_modelStatus; }
     QString modelName() const { return m_modelName; }
+    QString modelProblem() const { return m_modelProblem; }
     DeveloperSession *developer() const { return m_developer; }
     VoiceInput *voice() const { return m_voice; }
     QVariantList memories() const { return m_memories; }
@@ -156,7 +159,7 @@ private:
     bool m_mock = false, m_live = false, m_imageInterpreting = false;
     quint64 m_sessionGeneration = 0;
     QVariantList m_memories, m_skills, m_rules;
-    QString m_dataNotice, m_imageAnswer, m_modelStatus = "unknown", m_modelName, m_rememberedToken;
+    QString m_dataNotice, m_imageAnswer, m_modelStatus = "unknown", m_modelName, m_modelProblem, m_rememberedToken;
     QJsonObject m_validManifest;
     bool m_imageLoading = false;
     quint64 m_imageGeneration = 0;

@@ -22,10 +22,17 @@ export async function authenticate(request: Request): Promise<SupabaseClient | n
   return user ? supabase : null;
 }
 
-// What the client is told about the model: whether one is usable, and which. No endpoint or key.
-export function modelStatus(): { configured: boolean; provider: string; model: string } {
+// What the client is told about the model: whether one is set, whether the provider accepts it,
+// and which it is. No endpoint or key. The check is free and its result is kept for a minute.
+let checked: { at: number; key: string; problem: string } | null = null;
+export async function modelStatus(): Promise<{ configured: boolean; working: boolean; problem: string; provider: string; model: string }> {
   const { provider } = selectProvider();
-  return { configured: provider !== null, provider: provider?.id ?? "", model: provider?.model() ?? "" };
+  if (!provider) return { configured: false, working: false, problem: "", provider: "", model: "" };
+  const key = provider.id + "|" + provider.model();
+  if (!checked || checked.key !== key || Date.now() - checked.at > 60_000) {
+    checked = { at: Date.now(), key, problem: await provider.verify() };
+  }
+  return { configured: true, working: checked.problem === "", problem: checked.problem, provider: provider.id, model: provider.model() };
 }
 
 // Returns the model's reply, or a ready error response.

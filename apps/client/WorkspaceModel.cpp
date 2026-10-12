@@ -281,7 +281,7 @@ void WorkspaceModel::syncAccount() {
     m_mock = false; m_live = signedIn;
     m_memories.clear(); m_skills.clear(); m_rules.clear(); m_dataNotice.clear();
     m_imageAnswer.clear(); m_imageInterpreting = false;
-    m_modelStatus = "unknown"; m_modelName.clear();
+    m_modelStatus = "unknown"; m_modelName.clear(); m_modelProblem.clear();
     m_developer->setGateway(signedIn ? m_data : nullptr);
     if (signedIn) {
         startRuntime(new GatewayModelProvider(m_auth->projectUrl(), m_auth->publishableKey(), m_token), "Model via account gateway", liveEngineStatus());
@@ -295,7 +295,10 @@ void WorkspaceModel::loadAccountData() {
     const auto generation = m_sessionGeneration;
     m_data->invoke("assistant", {{"probe", true}}, [this, generation](int status, QJsonDocument body) {
         if (generation != m_sessionGeneration || status != 200 || !body.object()["configured"].isBool()) return;
-        m_modelStatus = body.object()["configured"].toBool() ? "ready" : "missing";
+        // "working" is absent from an older gateway, which only knew whether a model was set.
+        const bool failing = body.object()["working"].isBool() && !body.object()["working"].toBool();
+        m_modelStatus = !body.object()["configured"].toBool() ? "missing" : failing ? "failing" : "ready";
+        m_modelProblem = failing ? body.object()["problem"].toString().left(300) : QString();
         m_modelName = body.object()["model"].toString().left(100);
         emit changed();
     });

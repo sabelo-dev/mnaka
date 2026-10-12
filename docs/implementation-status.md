@@ -569,3 +569,34 @@ and the browser may ask for the microphone again after a reload.
 Verified: unit cases for the matcher and for hands-free filtering; twelve targets pass.
 Not verified: real speech. How reliably a recogniser transcribes "Mnaka" is unknown and
 is the main risk; the list of accepted spellings will need tuning from real use.
+
+## First checks against the real project, and what they found
+
+`tests/integration/project_selftest.py` creates two temporary confirmed users with the
+project's service role (taken from the logged-in CLI, never stored), exercises the
+deployed functions and tables as those users, and deletes the users. Run on
+2026-10-12 it passed every storage check on the real database for the first time:
+memory, history order, history that cannot be rewritten, skill manifests and the
+duplicate refusal, rules and the column-level update rule, isolation between two
+accounts, refusal of planted rows, no access when signed out, and deleting a
+conversation. Creating the users also exercised the relay account trigger without
+blocking sign-up.
+
+It could not test the model. The Anthropic key on the project is not tied to a
+workspace and no `ANTHROPIC_WORKSPACE_ID` is set, so the provider rejects every
+request. The model-dependent checks in the script (a reply, memory reaching the model,
+conversation recall, image description, and a Developer change set that is compiled
+with `-Wall -Werror` and run) have therefore never passed. Vision and the Developer
+workspace stay EXPERIMENTAL until they do.
+
+That exposed a flaw: the app reported the model as ready because a key existed. The
+probe now makes a free token-counting call (cached for a minute) and reports whether
+the provider accepts the key, workspace and model name; the client shows NOT WORKING
+with the reason. `providers.ts` gained `verify()` and optional `ANTHROPIC_WORKSPACE_ID`.
+
+The wake word is now matched by sound rather than spelling (m-n-k plus a final vowel:
+"Monica", "manuka", "Monaco", "naka"), because a recogniser writes the nearest real
+word. When hands-free hears something not addressed to MNAKA it shows that utterance's
+first word only, so a persistent mishearing can be seen. Still unverified with real
+speech. `account_session_contract` failed once in a full run (20 s) and passed on every
+rerun; treat it as possibly timing-sensitive.

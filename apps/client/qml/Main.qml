@@ -102,10 +102,11 @@ ApplicationWindow {
     // paired desktop app that does not exist yet; SIGN IN needs an account session.
     function serviceRows() {
         const signedIn = workspace.connected
-        const noModel = workspace.modelStatus === "missing"
+        const noModel = window.modelDown
         const state = (label, tone, text) => ({ label: label, tone: tone, text: text })
         const signIn = text => state("SIGN IN", "off", text)
-        const needsModel = state("NOT CONFIGURED", "warn", "No model is set up on your account gateway yet.")
+        const needsModel = workspace.modelStatus === "failing" ? state("NOT WORKING", "warn", "A model is set, but its provider is refusing requests. " + workspace.modelProblem)
+            : state("NOT CONFIGURED", "warn", "No model is set up on your account gateway yet.")
         const available = text => state("AVAILABLE", "on", text)
         const experimental = text => state("EXPERIMENTAL", "new", text)
         const row = (key, name, value) => ({ key: key, name: name, label: value.label, tone: value.tone, text: value.text })
@@ -120,6 +121,7 @@ ApplicationWindow {
             row("control", "Computer control", state("DESKTOP REQUIRED", "off", "Needs a paired desktop app, which is not built yet."))
         ]
     }
+    readonly property bool modelDown: workspace.modelStatus === "missing" || workspace.modelStatus === "failing"
     readonly property string modelLabel: workspace.modelName.length > 0 ? workspace.modelName : "the configured model"
     function serviceFor(key) {
         const rows = window.serviceRows()
@@ -423,7 +425,7 @@ ApplicationWindow {
                         ColumnLayout {
                             spacing: 1; Layout.fillWidth: true
                             Label { text: window.signedIn ? window.accountName : "Not signed in"; color: window.ink; font.pixelSize: 13; elide: Text.ElideRight; Layout.fillWidth: true }
-                            Caption { text: workspace.connected ? (workspace.modelStatus === "missing" ? "Model not set up" : "Connected") : workspace.mockSession ? "Mock session" : "Signed out"; font.pixelSize: 11; elide: Text.ElideRight; wrapMode: Text.NoWrap; Layout.fillWidth: true }
+                            Caption { text: workspace.connected ? (workspace.modelStatus === "failing" ? "Model not working" : workspace.modelStatus === "missing" ? "Model not set up" : "Connected") : workspace.mockSession ? "Mock session" : "Signed out"; font.pixelSize: 11; elide: Text.ElideRight; wrapMode: Text.NoWrap; Layout.fillWidth: true }
                         }
                         Icon { path: window.icons.chevron; size: 14 }
                     }
@@ -447,8 +449,8 @@ ApplicationWindow {
                     Item { visible: window.compact; Layout.fillWidth: true }
                     RowLayout {
                         visible: !window.compact; spacing: 8
-                        Rectangle { implicitWidth: 8; implicitHeight: 8; radius: 4; color: workspace.connected ? (workspace.modelStatus === "missing" ? "#f5b544" : "#22c55e") : workspace.mockSession ? "#f5b544" : "#2f5a44" }
-                        Caption { text: workspace.connected ? (workspace.modelStatus === "missing" ? "Model not set up" : "Connected") : workspace.mockSession ? "Mock session" : "Not connected" }
+                        Rectangle { implicitWidth: 8; implicitHeight: 8; radius: 4; color: workspace.connected ? (window.modelDown ? "#f5b544" : "#22c55e") : workspace.mockSession ? "#f5b544" : "#2f5a44" }
+                        Caption { text: workspace.connected ? (workspace.modelStatus === "failing" ? "Model not working" : workspace.modelStatus === "missing" ? "Model not set up" : "Connected") : workspace.mockSession ? "Mock session" : "Not connected" }
                     }
                     Pill { visible: !window.compact; text: "●  " + workspace.state; tint: workspace.busy ? "#ffb000" : window.cyan }
                     ComboBox { id: mode; model: ["Assistant", "Developer", "Autonomous"]; Layout.preferredWidth: 170; Accessible.name: "Workflow mode" }
@@ -479,7 +481,7 @@ ApplicationWindow {
                         Layout.fillWidth: true; Layout.leftMargin: content.gutter; Layout.rightMargin: content.gutter
                         implicitHeight: statusText.implicitHeight + 24
                         color: "#071209"; border.color: "#1f5a3c"
-                        Caption { id: statusText; anchors.fill: parent; anchors.margins: 12; color: workspace.connected && workspace.modelStatus === "missing" ? "#f5d28a" : "#9be7b8"; text: workspace.connected && workspace.modelStatus === "missing" ? "Signed in, but no model is set up yet, so the assistant cannot answer. Set a model provider in your Supabase project secrets: ANTHROPIC_API_KEY, or MNAKA_LLM_BASE_URL with MNAKA_LLM_MODEL. Memory, skills and rules still save to your account." : workspace.connected ? "Connected to " + window.modelLabel + ". Messages go to the model set on your account gateway. Conversations, memories, skills and rules are saved to your account as plain text." : workspace.mockSession ? "MOCK SESSION. Replies come from a deterministic fixture, not a reasoning model. Tasks run through the broker's fixture tools only: no files, applications or networks are touched, and nothing is saved when you close MNAKA." : (workspace.accountConfigured ? "Signed out. Sign in under Settings to use the assistant. Nothing is sent or saved while you are signed out." : "No account service is configured for this build, so the assistant is unavailable.") }
+                        Caption { id: statusText; anchors.fill: parent; anchors.margins: 12; color: workspace.connected && window.modelDown ? "#f5d28a" : "#9be7b8"; text: workspace.connected && workspace.modelStatus === "failing" ? "Signed in, but the model's provider is refusing requests, so the assistant cannot answer. " + workspace.modelProblem + " Memory, skills and rules still save to your account." : workspace.connected && workspace.modelStatus === "missing" ? "Signed in, but no model is set up yet, so the assistant cannot answer. Set a model provider in your Supabase project secrets: ANTHROPIC_API_KEY, or MNAKA_LLM_BASE_URL with MNAKA_LLM_MODEL. Memory, skills and rules still save to your account." : workspace.connected ? "Connected to " + window.modelLabel + ". Messages go to the model set on your account gateway. Conversations, memories, skills and rules are saved to your account as plain text." : workspace.mockSession ? "MOCK SESSION. Replies come from a deterministic fixture, not a reasoning model. Tasks run through the broker's fixture tools only: no files, applications or networks are touched, and nothing is saved when you close MNAKA." : (workspace.accountConfigured ? "Signed out. Sign in under Settings to use the assistant. Nothing is sent or saved while you are signed out." : "No account service is configured for this build, so the assistant is unavailable.") }
                     }
                     GridLayout {
                         visible: window.page === 0
@@ -602,7 +604,7 @@ ApplicationWindow {
                                     id: orbColumn
                                     anchors.centerIn: parent; width: parent.width - 40; spacing: 6
                                     Orb { Layout.alignment: Qt.AlignHCenter; active: workspace.busy || window.voiceActive || workspace.voice.partial.length > 0; size: window.compact ? 170 : 230 }
-                                    Label { Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 6; text: window.voiceActive ? "Listening…" : workspace.busy ? workspace.state : window.voiceWaiting ? "Say \"Mnaka\"" : workspace.connected ? (workspace.modelStatus === "missing" ? "Model not set up" : workspace.voice.available ? "Ready to listen" : "Ready") : workspace.mockSession ? "Mock session ready" : "Not connected"; color: window.voiceActive ? "#ffb000" : window.ink; font.pixelSize: 19; font.weight: Font.DemiBold }
+                                    Label { Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 6; text: window.voiceActive ? "Listening…" : workspace.busy ? workspace.state : window.voiceWaiting ? "Say \"Mnaka\"" : workspace.connected ? (workspace.modelStatus === "failing" ? "Model not working" : workspace.modelStatus === "missing" ? "Model not set up" : workspace.voice.available ? "Ready to listen" : "Ready") : workspace.mockSession ? "Mock session ready" : "Not connected"; color: window.voiceActive ? "#ffb000" : window.ink; font.pixelSize: 19; font.weight: Font.DemiBold }
                                     Caption {
                                         Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter
                                         color: workspace.voice.partial.length > 0 ? window.ink : window.muted

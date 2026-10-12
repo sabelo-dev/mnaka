@@ -10,26 +10,26 @@
 namespace {
 QPointer<VoiceInput> activeInput;
 
-int editDistance(const QString &a, const QString &b) {
-    QList<int> row(b.size() + 1);
-    for (int j = 0; j <= b.size(); ++j) row[j] = j;
-    for (int i = 1; i <= a.size(); ++i) {
-        int diagonal = row[0];
-        row[0] = i;
-        for (int j = 1; j <= b.size(); ++j) {
-            const int above = row[j];
-            row[j] = qMin(qMin(row[j] + 1, row[j - 1] + 1), diagonal + (a[i - 1] == b[j - 1] ? 0 : 1));
-            diagonal = above;
-        }
+// A speech engine has never seen "Mnaka", so it writes whatever real word sounds closest:
+// "Monica", "manuka", "Monaco", "manaka", "my naka". What those share is the sound m-n-k with a
+// vowel on the end, so that is what is matched, not a spelling. Words with the same consonants
+// but no final vowel ("monk", "manic", "mink") or a different ending ("monkey") do not match.
+QString soundSkeleton(const QString &word) {
+    QString skeleton;
+    for (const QChar letter : word) {
+        QChar sound = letter;
+        if (QString("aeiouyhw").contains(letter)) continue;
+        if (letter == 'c' || letter == 'q') sound = 'k'; // not g: "mango" is not the name
+        if (skeleton.isEmpty() || skeleton.back() != sound) skeleton.append(sound);
     }
-    return row[b.size()];
+    return skeleton;
 }
-// "mnaka" as a recogniser might spell it. Kept tight: a loose match would wake on ordinary words.
 bool soundsLikeWakeWord(const QString &word) {
-    static const QStringList heard{"mnaka", "manaka", "monaka", "menaka", "minaka", "munaka", "monaca", "manaca", "mnaca",
-        "emnaka", "imnaka", "amnaka", "umnaka", "mnakka", "manakka"};
-    if (word.size() < 4 || word.size() > 8) return false;
-    return heard.contains(word) || editDistance(word, "mnaka") <= 1;
+    if (word.size() < 4 || word.size() > 9) return false;
+    if (!QString("aou").contains(word.back())) return false;
+    const auto skeleton = soundSkeleton(word);
+    // The leading "m" is often swallowed or heard as a separate "em"/"in": "naka", "inaka".
+    return skeleton == "mnk" || (skeleton == "nk" && word.size() <= 6 && word.contains("nak"));
 }
 }
 
@@ -177,7 +177,11 @@ void VoiceInput::handleEvent(const QString &kind, const QString &text) {
         } else if (woke) {
             if (request.isEmpty()) { awaitRequest(true); m_notice = "Yes? Say your request."; }
             else { m_notice.clear(); emit recognized(request); }
-        } // otherwise: not addressed to MNAKA, dropped
+        } else {
+            // Not addressed to MNAKA: dropped. Only its first word is shown, so that a name the
+            // recogniser keeps mishearing can be seen and reported.
+            m_notice = "Heard \"" + spoken.section(' ', 0, 0).left(24) + "…\", not \"Mnaka\". Start with \"Mnaka\".";
+        }
     } else if (kind == "end") {
         m_sessionRunning = false; m_partial.clear();
         // Browsers end a session after a pause or a minute or so; hands-free starts the next one.

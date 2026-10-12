@@ -33,20 +33,43 @@ export interface ModelProvider {
   // Empty when ready; otherwise what is missing, in words an operator can act on.
   missing(): string;
   model(): string;
+  // A free call that proves the key, workspace and model name are accepted. Empty when they
+  // are; otherwise a short reason. Never sends user content.
+  verify(): Promise<string>;
   complete(request: ChatRequest): Promise<ChatResult>;
 }
 
 const env = (name: string) => (Deno.env.get(name) ?? "").trim();
 
+// Reads ANTHROPIC_API_KEY. A key that is not tied to one workspace also needs to say which
+// workspace to bill and apply limits to.
+function anthropicClient(): Anthropic {
+  const workspace = env("ANTHROPIC_WORKSPACE_ID");
+  return new Anthropic(workspace ? { defaultHeaders: { "anthropic-workspace-id": workspace } } : {});
+}
+
 const anthropicProvider: ModelProvider = {
   id: "anthropic",
   missing: () => env("ANTHROPIC_API_KEY") ? "" : "ANTHROPIC_API_KEY is not set.",
   model: () => env("MNAKA_LLM_MODEL") || "claude-sonnet-5-5",
+  async verify() {
+    try {
+      // Token counting is free and runs the same checks as a real request.
+      await anthropicClient().messages.countTokens({ model: this.model(), messages: [{ role: "user", content: "ping" }] });
+      return "";
+    } catch (error) {
+      if (error instanceof Anthropic.AuthenticationError || error instanceof Anthropic.PermissionDeniedError) return "The provider rejected the key.";
+      if (error instanceof Anthropic.NotFoundError) return "The provider does not know this model name.";
+      if (error instanceof Anthropic.BadRequestError) {
+        console.error("anthropic verify:", error.message);
+        return "The provider did not accept the request. A key that is not tied to a workspace also needs ANTHROPIC_WORKSPACE_ID.";
+      }
+      if (error instanceof Anthropic.RateLimitError) return ""; // the key works; it is only busy
+      return "The provider could not be reached.";
+    }
+  },
   async complete(request) {
-    // Reads ANTHROPIC_API_KEY. A key that is not tied to one workspace also needs to say which
-    // workspace to bill and apply limits to.
-    const workspace = env("ANTHROPIC_WORKSPACE_ID");
-    const client = new Anthropic(workspace ? { defaultHeaders: { "anthropic-workspace-id": workspace } } : {});
+    const client = anthropicClient();
     const model = this.model();
     try {
       // Server-side fallback: if the model's safety classifiers decline a request that another
@@ -108,6 +131,17 @@ const openAiCompatibleProvider: ModelProvider = {
   id: "openai-compatible",
   missing: () => !env("MNAKA_LLM_BASE_URL") ? "MNAKA_LLM_BASE_URL is not set." : !env("MNAKA_LLM_MODEL") ? "MNAKA_LLM_MODEL is not set." : "",
   model: () => env("MNAKA_LLM_MODEL"),
+  async verify() {
+    // Most compatible servers list their models; one that does not is given the benefit of the doubt.
+    try {
+      const key = env("MNAKA_LLM_API_KEY");
+      const response = await fetch(env("MNAKA_LLM_BASE_URL").replace(/\/+$/, "") + "/models", {
+        headers: key ? { Authorization: "Bearer " + key } : {}, signal: AbortSignal.timeout(8000) });
+      return response.status === 401 || response.status === 403 ? "The model endpoint rejected the key." : "";
+    } catch {
+      return "The model endpoint could not be reached.";
+    }
+  },
   async complete(request) {
     const base = env("MNAKA_LLM_BASE_URL").replace(/\/+$/, "");
     const key = env("MNAKA_LLM_API_KEY");

@@ -17,8 +17,8 @@ Deno.serve(async (request) => {
 
   let input: { text?: unknown; image?: unknown; probe?: unknown };
   try { input = await request.json(); } catch { return fail(400, "INVALID_ARGUMENT", "Body must be JSON."); }
-  // Lets the client show "model not set up" instead of failing on the first message. No model call is made.
-  if (input.probe === true) return reply(200, modelStatus());
+  // Lets the client show "model not set up" or "not working" instead of failing on the first message.
+  if (input.probe === true) return reply(200, await modelStatus());
   const text = typeof input.text === "string" ? input.text.trim() : "";
   if (text.length < 1 || text.length > MAX_TEXT) return fail(400, "INVALID_ARGUMENT", "Message must be 1 to 4000 characters.");
   const image = input.image === undefined ? null : input.image;

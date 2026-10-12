@@ -15,7 +15,7 @@ public:
     QStringList calls;
     QJsonArray history;
     int assistantStatus = 200;
-    bool modelConfigured = true;
+    bool modelConfigured = true, modelWorking = true;
     int tokenStatus = 200;
     QJsonObject lastAssistantBody, lastDeveloperBody, developerReply;
     int developerStatus = 200;
@@ -50,7 +50,8 @@ public:
                 else if (path == "/auth/v1/logout") status = 204;
                 else if (lastAuthorization != "Bearer access-1") { status = 401; answer = QJsonDocument(QJsonObject{{"code", "UNAUTHENTICATED"}}); }
                 else if (path == "/functions/v1/assistant" && body["probe"].toBool())
-                    answer = QJsonDocument(QJsonObject{{"configured", modelConfigured}, {"provider", "anthropic"}, {"model", modelConfigured ? "test-model" : ""}});
+                    answer = QJsonDocument(QJsonObject{{"configured", modelConfigured}, {"provider", "anthropic"}, {"model", modelConfigured ? "test-model" : ""},
+                        {"working", modelConfigured && modelWorking}, {"problem", modelWorking ? "" : "The provider rejected the key."}});
                 else if (path == "/functions/v1/assistant") {
                     lastAssistantBody = body; status = assistantStatus;
                     answer = QJsonDocument(status == 200 ? QJsonObject{{"text", "Reply to: " + body["text"].toString()}, {"model", "test-model"}, {"saved", true}}
@@ -190,6 +191,12 @@ private slots:
         model.signIn("user@example.test", "password");
         QTRY_VERIFY(model.connected());
         QTRY_COMPARE(model.modelStatus(), QString("missing"));
+        model.signOut();
+        project.modelConfigured = true; project.modelWorking = false; // a key is set, but the provider refuses it
+        model.signIn("user@example.test", "password");
+        QTRY_VERIFY(model.connected());
+        QTRY_COMPARE(model.modelStatus(), QString("failing"));
+        QVERIFY(model.modelProblem().contains("rejected"));
         QVERIFY(model.submit("hello", "Assistant"));
         QTRY_VERIFY_WITH_TIMEOUT(!model.busy(), 10000);
         QCOMPARE(model.tasks().first().toMap()["state"].toString(), QString("failed"));
@@ -267,6 +274,11 @@ private slots:
         QCOMPARE(request("hey manaka what time is it"), QString("[what time is it]"));
         QCOMPARE(request("OK Monaka: cancel"), QString("[cancel]"));
         QCOMPARE(request("em naka open tasks"), QString("[open tasks]"));
+        // What a recogniser actually writes for a name it has never seen.
+        for (const char *heard : {"Monica", "monika", "manuka", "Monaco", "Manaka", "menaka", "munaka", "naka", "nakka", "my naka", "em naka", "I'm naka", "in aka"})
+            QCOMPARE(request(QString(heard) + " please check the weather for me"), QString("[please check the weather for me]"));
+        for (const char *other : {"monk", "monkey", "manic", "mink", "mango", "monday", "many", "banana", "maniac", "knock", "Nikki"})
+            QCOMPARE(request(QString(other) + " please check the weather"), QString("ignored"));
         QCOMPARE(request("Mnaka"), QString("[]"));
         QCOMPARE(request("Mnaka."), QString("[]"));
         // Not addressed to MNAKA: the name later in a sentence, or ordinary words.
@@ -285,6 +297,8 @@ private slots:
         voice.handleEvent("final", "I think Mnaka is listening");
         QCOMPARE(heard.size(), 0); // bystander speech goes nowhere
         QVERIFY(voice.partial().isEmpty());
+        QVERIFY(voice.notice().contains("Heard \"I…\"")); // one word only, to show a misheard name
+        QVERIFY(!voice.notice().contains("listening"));
         voice.handleEvent("final", "Mnaka please check the weather for me");
         QCOMPARE(heard.size(), 1);
         QCOMPARE(heard.last().first().toString(), QString("please check the weather for me"));
