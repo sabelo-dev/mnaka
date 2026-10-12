@@ -9,6 +9,7 @@
 //   MNAKA_LLM_MODEL      model name. Required for openai-compatible; defaults to
 //                        claude-sonnet-5-5 for anthropic.
 //   ANTHROPIC_API_KEY    key for the anthropic provider.
+//   ANTHROPIC_WORKSPACE_ID  only for a key that is not scoped to a workspace: the workspace to use.
 //   MNAKA_LLM_BASE_URL   e.g. https://llm.example.com/v1, for openai-compatible (Ollama, vLLM,
 //                        llama.cpp server, or MNAKA's own model behind the same API).
 //   MNAKA_LLM_API_KEY    key for the openai-compatible endpoint, if it needs one.
@@ -42,7 +43,10 @@ const anthropicProvider: ModelProvider = {
   missing: () => env("ANTHROPIC_API_KEY") ? "" : "ANTHROPIC_API_KEY is not set.",
   model: () => env("MNAKA_LLM_MODEL") || "claude-sonnet-5-5",
   async complete(request) {
-    const client = new Anthropic(); // reads ANTHROPIC_API_KEY
+    // Reads ANTHROPIC_API_KEY. A key that is not tied to one workspace also needs to say which
+    // workspace to bill and apply limits to.
+    const workspace = env("ANTHROPIC_WORKSPACE_ID");
+    const client = new Anthropic(workspace ? { defaultHeaders: { "anthropic-workspace-id": workspace } } : {});
     const model = this.model();
     try {
       // Server-side fallback: if the model's safety classifiers decline a request that another
