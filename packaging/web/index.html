@@ -14,18 +14,22 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="stylesheet" href="mnaka-shell.css">
+    <!-- This page is never cached. Everything under r/__RELEASE__/ belongs to exactly this
+         release and is cached for good, so an old page can never load a newer build's files. -->
+    <link rel="stylesheet" href="r/__RELEASE__/mnaka-shell.css">
   </head>
   <body>
     <main id="shell">
       <img src="mnaka-logo.png" width="96" height="96" alt="">
       <h1>MNAKA</h1>
-      <p id="status" role="status">Loading…</p>
+      <p id="status" role="status" aria-live="polite">Starting…</p>
+      <div id="progress" role="progressbar" aria-label="Download progress" aria-valuemin="0" aria-valuemax="100" hidden><div id="progress-bar"></div></div>
+      <button id="retry" type="button" hidden>Try again</button>
       <noscript>MNAKA needs JavaScript and WebAssembly.</noscript>
     </main>
     <div id="screen" hidden></div>
-    <script src="mnaka_client.js"></script>
-    <script src="qtloader.js"></script>
-    <script src="mnaka-boot.js"></script>
+    <script src="r/__RELEASE__/mnaka_client.js"></script>
+    <script src="r/__RELEASE__/qtloader.js"></script>
+    <script src="r/__RELEASE__/mnaka-boot.js" data-release="__RELEASE__" data-wasm-bytes="__WASM_BYTES__"></script>
   </body>
 </html>

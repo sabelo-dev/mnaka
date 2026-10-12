@@ -70,34 +70,60 @@ ApplicationWindow {
         if (!workspace.submit(spoken, mode.currentText)) composer.text = spoken // keep what was said so it can be sent later
     }
     property string voiceNotice: ""
-    function scrollBy(distance) {
+    function scrollLimit() { return Math.max(0, scroll.contentHeight - scroll.height) }
+    function scrollBy(distance) { window.glideTo((glide.running ? glide.to : scroll.contentItem.contentY) + distance) }
+    function glideTo(position) {
+        glide.stop()
+        glide.to = Math.max(0, Math.min(position, window.scrollLimit()))
+        glide.start()
+    }
+    function wheelScroll(event) {
         const view = scroll.contentItem
-        view.contentY = Math.max(0, Math.min(view.contentY + distance, Math.max(0, scroll.contentHeight - scroll.height)))
+        const delta = event.pixelDelta.y !== 0 ? event.pixelDelta.y : event.angleDelta.y / 120 * 96
+        if (Math.abs(delta) < 40 && !glide.running) view.contentY = Math.max(0, Math.min(view.contentY - delta, window.scrollLimit()))
+        else window.glideTo((glide.running ? glide.to : view.contentY) - delta)
+    }
+    NumberAnimation { id: glide; target: scroll.contentItem; property: "contentY"; duration: 220; easing.type: Easing.OutCubic }
+    Connections {
+        target: scroll.contentItem
+        // A finger on the page takes over from a glide in progress.
+        function onDraggingChanged() { if (scroll.contentItem.dragging) glide.stop() }
     }
     function revealComposer() {
         const bottom = composerBox.mapToItem(content, 0, composerBox.height).y + 56
         const view = scroll.contentItem
         if (bottom > view.contentY + scroll.height) view.contentY = Math.min(bottom - scroll.height, Math.max(0, scroll.contentHeight - scroll.height))
     }
-    // What each part of MNAKA can do right now, in plain words, for the Settings screen.
+    // What each part of MNAKA can do right now, in plain words. One source for the Settings list
+    // and the Overview cards. States: AVAILABLE works as described; EXPERIMENTAL works but is new
+    // or stores without acting; NOT CONFIGURED needs the owner's model; DESKTOP REQUIRED needs a
+    // paired desktop app that does not exist yet; SIGN IN needs an account session.
     function serviceRows() {
         const signedIn = workspace.connected
         const noModel = workspace.modelStatus === "missing"
-        const account = (on, off) => signedIn ? { label: "ON", tone: "on", text: on } : { label: "SIGN IN", tone: "off", text: off }
-        const model = (on, off) => !signedIn ? { label: "SIGN IN", tone: "off", text: off } : noModel ? { label: "NEEDS MODEL", tone: "warn", text: "No model is set up on your account gateway yet." } : { label: "ON", tone: "on", text: on }
-        const row = (name, state) => ({ name: name, label: state.label, tone: state.tone, text: state.text })
+        const state = (label, tone, text) => ({ label: label, tone: tone, text: text })
+        const signIn = text => state("SIGN IN", "off", text)
+        const needsModel = state("NOT CONFIGURED", "warn", "No model is set up on your account gateway yet.")
+        const available = text => state("AVAILABLE", "on", text)
+        const experimental = text => state("EXPERIMENTAL", "new", text)
+        const row = (key, name, value) => ({ key: key, name: name, label: value.label, tone: value.tone, text: value.text })
         return [
-            row("Assistant", model("Answers through your own model.", "Sign in to talk to your own model.")),
-            row("Memory", account("Facts you save are sent to your model with every message.", "Sign in to save facts for your model.")),
-            row("Vision", model("Interprets an image you choose, through your model.", "Image preview works now; sign in to interpret images.")),
-            row("Developer workspace", model("Proposes changes to files you add. It cannot build or test.", "You can add files now; sign in to ask for changes.")),
-            row("Skills", account("Saves manifests that pass inspection. Nothing runs them yet.", "Inspection works now; sign in to save manifests.")),
-            row("Proactive rules", account("Saves your rules. Nothing schedules or runs them yet.", "Sign in to save rules.")),
-            row("Voice input", workspace.voice.available ? { label: "ON", tone: "on", text: "Press the microphone and speak. Recognised by this browser." }
-                : { label: "UNAVAILABLE", tone: "off", text: "Needs the web version in Chrome, Edge or Safari." }),
-            row("Computer control", { label: "UNAVAILABLE", tone: "off", text: "Needs a paired desktop app, which is not built yet." })
+            row("assistant", "Assistant", !signedIn ? signIn("Sign in to talk to your own model.") : noModel ? needsModel : available("Answers through your own model.")),
+            row("memory", "Memory", !signedIn ? signIn("Sign in to save facts for your model.") : available("Facts you save are sent to your model with every message.")),
+            row("vision", "Vision", !signedIn ? signIn("Image preview works now; sign in to interpret images.") : noModel ? needsModel : experimental("Interprets an image you choose. Needs a model that accepts images.")),
+            row("developer", "Developer workspace", !signedIn ? signIn("You can add files now; sign in to ask for changes.") : noModel ? needsModel : experimental("Proposes changes to files you add. It cannot build or test.")),
+            row("skills", "Skills", !signedIn ? signIn("Inspection works now; sign in to save manifests.") : experimental("Saves manifests that pass inspection. Nothing runs them yet.")),
+            row("proactive", "Proactive rules", !signedIn ? signIn("Sign in to save rules.") : experimental("Saves your rules. Nothing schedules or runs them yet.")),
+            row("voice", "Voice input", workspace.voice.available ? experimental("Press the microphone and speak. Recognised by this browser.") : state("UNAVAILABLE", "off", "Needs the web version in Chrome, Edge or Safari.")),
+            row("control", "Computer control", state("DESKTOP REQUIRED", "off", "Needs a paired desktop app, which is not built yet."))
         ]
     }
+    function serviceFor(key) {
+        const rows = window.serviceRows()
+        for (let i = 0; i < rows.length; ++i) if (rows[i].key === key) return rows[i]
+        return { key: key, name: key, label: "UNAVAILABLE", tone: "off", text: "" }
+    }
+    function toneColor(tone) { return tone === "on" ? "#22c55e" : tone === "warn" ? "#f5b544" : tone === "new" ? "#00ff9c" : "#2f5a44" }
     function capabilityFor(id) {
         const list = workspace.capabilities
         for (let i = 0; i < list.length; ++i) if (list[i].id === id) return list[i]
@@ -278,10 +304,9 @@ ApplicationWindow {
         id: engine
         property string icon
         property string name
-        property string detail
-        property string engineId
+                property string engineId
         property int destination
-        readonly property var capability: window.capabilityFor(engineId)
+        readonly property var service: window.serviceFor(engineId)
         implicitHeight: engineColumn.implicitHeight + 28
         color: engineButton.hovered ? "#0b2015" : window.panel
         ColumnLayout {
@@ -294,11 +319,11 @@ ApplicationWindow {
                 Icon { path: window.icons.chevron; size: 16 }
             }
             Label { text: engine.name; color: window.ink; font.pixelSize: 14; font.weight: Font.DemiBold; wrapMode: Text.WordWrap; Layout.fillWidth: true; Layout.topMargin: 4 }
-            Caption { text: engine.detail; font.pixelSize: 12; Layout.fillWidth: true }
+            Caption { text: engine.service.text; font.pixelSize: 12; Layout.fillWidth: true }
             RowLayout {
                 spacing: 7; Layout.topMargin: 2; Layout.fillWidth: true
-                Rectangle { implicitWidth: 8; implicitHeight: 8; radius: 4; color: engine.capability.enabled ? "#22c55e" : engine.capability.available ? window.cyan : "#2f5a44" }
-                Caption { text: engine.capability.enabled ? "Ready" : engine.capability.status; font.pixelSize: 12; color: engine.capability.enabled ? "#4ade80" : engine.capability.available ? window.cyan : window.muted; maximumLineCount: 2; elide: Text.ElideRight; Layout.fillWidth: true }
+                Rectangle { implicitWidth: 8; implicitHeight: 8; radius: 4; color: window.toneColor(engine.service.tone) }
+                Caption { text: engine.service.label; font.pixelSize: 11; font.letterSpacing: 1; color: engine.service.tone === "off" ? window.muted : window.toneColor(engine.service.tone); elide: Text.ElideRight; wrapMode: Text.NoWrap; Layout.fillWidth: true }
             }
         }
         Button {
@@ -308,13 +333,14 @@ ApplicationWindow {
             onClicked: window.page = engine.destination
         }
     }
+    Component.onCompleted: if (workspace.accountNotice.length > 0) window.page = 8
     Shortcut { sequence: "Ctrl+L"; onActivated: { window.page = 0; composer.forceActiveFocus() } }
     Shortcut { sequence: "Escape"; onActivated: workspace.cancel() }
     Shortcut { sequence: "PgDown"; onActivated: window.scrollBy(scroll.height * 0.85) }
     Shortcut { sequence: "PgUp"; onActivated: window.scrollBy(-scroll.height * 0.85) }
     Shortcut { sequence: "Ctrl+End"; onActivated: window.scrollBy(1e9) }
     Shortcut { sequence: "Ctrl+Home"; onActivated: window.scrollBy(-1e9) }
-    onPageChanged: scroll.contentItem.contentY = 0
+    onPageChanged: { glide.stop(); scroll.contentItem.contentY = 0 }
     Connections {
         target: workspace.voice
         function onRecognized(text) { window.handleVoice(text) }
@@ -419,6 +445,7 @@ ApplicationWindow {
                 id: scroll
                 Layout.fillWidth: true; Layout.fillHeight: true
                 contentWidth: availableWidth
+                Component.onCompleted: { const view = contentItem as Flickable; if (view) { view.boundsBehavior = Flickable.StopAtBounds; view.pixelAligned = true } }
                 // Always visible and wide enough to grab whenever the page is taller than the view.
                 ScrollBar.vertical.policy: scroll.contentHeight > scroll.height ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
                 ScrollBar.vertical.width: 12
@@ -429,6 +456,11 @@ ApplicationWindow {
                     readonly property int gutter: window.compact ? 14 : 22
                     width: scroll.availableWidth
                     spacing: 16
+                    WheelHandler {
+                        target: null
+                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                        onWheel: event => window.wheelScroll(event)
+                    }
                     Item { implicitHeight: 2 }
                     Card {
                         Layout.fillWidth: true; Layout.leftMargin: content.gutter; Layout.rightMargin: content.gutter
@@ -453,10 +485,14 @@ ApplicationWindow {
                                         spacing: 2; Layout.fillWidth: true; Layout.minimumWidth: 0
                                         Heading {
                                             id: greetingLine
-                                            property bool caretOn: true
-                                            text: window.greeting + (window.signedIn ? ", " + window.accountName : "") + (caretOn ? " █" : "")
-                                            elide: Text.ElideRight; wrapMode: Text.NoWrap; Layout.fillWidth: true
-                                            Timer { interval: 550; running: window.page === 0; repeat: true; onTriggered: greetingLine.caretOn = !greetingLine.caretOn }
+                                            text: window.greeting + (window.signedIn ? ", " + window.accountName : "")
+                                            elide: Text.ElideRight; wrapMode: Text.NoWrap; Layout.fillWidth: true; rightPadding: 18
+                                            Rectangle {
+                                                id: caret
+                                                x: Math.min(greetingLine.contentWidth + 8, greetingLine.width - width); y: 3
+                                                width: 10; height: greetingLine.height - 6; color: window.cyan
+                                                Timer { interval: 550; running: window.page === 0; repeat: true; onTriggered: caret.opacity = caret.opacity > 0.5 ? 0 : 1 }
+                                            }
                                         }
                                         Caption { text: "$ awaiting input"; font.pixelSize: 14 }
                                     }
@@ -577,12 +613,12 @@ ApplicationWindow {
                             GridLayout {
                                 columns: window.compact ? 1 : window.width >= 1500 ? 3 : 2; columnSpacing: 12; rowSpacing: 12; Layout.fillWidth: true; Layout.fillHeight: false
                                 uniformCellWidths: true
-                                EngineCard { Layout.fillWidth: true; Layout.fillHeight: true; icon: window.icons.code; name: "Software Engineering"; detail: "Scoped patches, isolated builds and review evidence."; engineId: "software"; destination: 2 }
-                                EngineCard { Layout.fillWidth: true; Layout.fillHeight: true; icon: window.icons.monitor; name: "Computer Control"; detail: "Registered adapters and foreground verification."; engineId: "control"; destination: 3 }
-                                EngineCard { Layout.fillWidth: true; Layout.fillHeight: true; icon: window.icons.layers; name: "Self-extending Skills"; detail: "Validated manifests, approval and rollback."; engineId: "skills"; destination: 4 }
-                                EngineCard { Layout.fillWidth: true; Layout.fillHeight: true; icon: window.icons.chart; name: "Project Intelligence"; detail: "Sourced memories, decisions and deletion."; engineId: "memory"; destination: 5 }
-                                EngineCard { Layout.fillWidth: true; Layout.fillHeight: true; icon: window.icons.eye; name: "Vision & Spatial"; detail: "Selected images and a bounded scene viewer."; engineId: "vision"; destination: 6 }
-                                EngineCard { Layout.fillWidth: true; Layout.fillHeight: true; icon: window.icons.zap; name: "Proactive Intelligence"; detail: "Deterministic rules with explicit authorization."; engineId: "proactive"; destination: 7 }
+                                EngineCard { Layout.fillWidth: true; Layout.fillHeight: true; icon: window.icons.code; name: "Software Engineering"; engineId: "developer"; destination: 2 }
+                                EngineCard { Layout.fillWidth: true; Layout.fillHeight: true; icon: window.icons.monitor; name: "Computer Control"; engineId: "control"; destination: 3 }
+                                EngineCard { Layout.fillWidth: true; Layout.fillHeight: true; icon: window.icons.layers; name: "Self-extending Skills"; engineId: "skills"; destination: 4 }
+                                EngineCard { Layout.fillWidth: true; Layout.fillHeight: true; icon: window.icons.chart; name: "Project Intelligence"; engineId: "memory"; destination: 5 }
+                                EngineCard { Layout.fillWidth: true; Layout.fillHeight: true; icon: window.icons.eye; name: "Vision & Spatial"; engineId: "vision"; destination: 6 }
+                                EngineCard { Layout.fillWidth: true; Layout.fillHeight: true; icon: window.icons.zap; name: "Proactive Intelligence"; engineId: "proactive"; destination: 7 }
                             }
                         }
                         ColumnLayout {
@@ -1155,7 +1191,7 @@ ApplicationWindow {
                                 Rectangle {
                                     id: service
                                     required property var modelData
-                                    readonly property color tone: modelData.tone === "on" ? "#22c55e" : modelData.tone === "warn" ? "#f5b544" : "#2f5a44"
+                                    readonly property color tone: window.toneColor(modelData.tone)
                                     Layout.fillWidth: true; radius: 2; color: "#020a06"; border.color: window.line
                                     implicitHeight: serviceRow.implicitHeight + 20
                                     RowLayout {
@@ -1185,7 +1221,7 @@ ApplicationWindow {
                                     "Messages, and the files you add in the Developer workspace, are sent to your own model when you ask for something.",
                                     "An image leaves this device only when you choose Interpret. It is not stored.",
                                     "The microphone is used only while you press the microphone button. Camera and location are never used.",
-                                    "Your sign-in lasts until you close MNAKA. It is not kept on this device."
+                                    workspace.sessionPersists ? "You stay signed in on this device until you sign out. Signing out removes the saved sign-in." : "Your sign-in lasts until you close MNAKA. It is not kept on this device."
                                 ]
                                 RowLayout {
                                     id: fact
@@ -1207,7 +1243,7 @@ ApplicationWindow {
                             Caption {
                                 Layout.fillWidth: true
                                 text: !workspace.accountConfigured ? "No account service is configured for this build."
-                                    : window.signedIn ? "Signed in as " + workspace.accountEmail + ". The session is kept in memory only and ends when you close MNAKA. Your conversations, memories, skills and rules are saved to your account."
+                                    : window.signedIn ? "Signed in as " + workspace.accountEmail + ". " + (workspace.sessionPersists ? "You stay signed in on this device until you sign out." : "The session ends when you close MNAKA.") + " Your conversations, memories, skills and rules are saved to your account."
                                     : "Your email and password are sent to the configured Supabase project over HTTPS. After you sign in, your messages go to your own model and your data is saved to your account."
                             }
                             Field {
@@ -1227,6 +1263,7 @@ ApplicationWindow {
                                 visible: accountEmailField.visible; spacing: 10
                                 PrimaryButton { text: "Sign in"; enabled: !workspace.accountBusy; onClicked: { workspace.signIn(accountEmailField.text, accountPasswordField.text); accountPasswordField.clear() } }
                                 GhostButton { text: "Create account"; enabled: !workspace.accountBusy; onClicked: { workspace.signUp(accountEmailField.text, accountPasswordField.text); accountPasswordField.clear() } }
+                                GhostButton { text: "Resend confirmation email"; enabled: !workspace.accountBusy && accountEmailField.text.trim().length > 0; onClicked: workspace.resendConfirmation(accountEmailField.text) }
                             }
                             GhostButton { visible: window.signedIn; text: "Sign out"; onClicked: workspace.signOut() }
                             Caption { text: workspace.accountBusy ? "Contacting the account service…" : workspace.accountNotice; visible: text.length > 0; Layout.fillWidth: true }

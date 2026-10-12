@@ -8,6 +8,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonParseError>
+#include <QSettings>
 #include <QTimer>
 #include "engines/skills/SkillValidator.h"
 #include "engines/assistant/ConversationEngine.h"
@@ -26,6 +27,18 @@ using namespace mnaka;
 
 namespace {
 const qint64 maxImageBytes = 20 * 1024 * 1024;
+// Where the sign-in is remembered between runs: the browser's storage for this site, the app's
+// private storage on Android, or a file named by MNAKA_SESSION_FILE. Nowhere on a desktop by
+// default, where there is no vault adapter for it yet.
+std::unique_ptr<QSettings> sessionStore() {
+    const auto file = qEnvironmentVariable("MNAKA_SESSION_FILE");
+    if (!file.isEmpty()) return std::make_unique<QSettings>(file, QSettings::IniFormat);
+#if defined(Q_OS_WASM) || defined(Q_OS_ANDROID)
+    return std::make_unique<QSettings>();
+#else
+    return nullptr;
+#endif
+}
 // What each engine entry means while an account session is running.
 QHash<QString, QString> liveEngineStatus() {
     return {{"software", "Needs desktop app"}, {"control", "Needs desktop app"}, {"memory", "Saved to account"},
@@ -65,7 +78,24 @@ WorkspaceModel::WorkspaceModel(QObject *parent) : QObject(parent), m_developer(n
     m_accountNotice = m_auth->configError();
     m_data = new SupabaseData(m_auth, this);
     m_token = std::make_shared<SessionToken>();
-    connect(m_auth, &SupabaseAuth::changed, this, [this] { syncAccount(); emit accountChanged(); });
+    connect(m_auth, &SupabaseAuth::changed, this, [this] {
+        if (m_auth->signedIn()) rememberSession(m_auth->refreshToken()); // also follows token rotation
+        else if (m_live) rememberSession({}); // the session ended: nothing left worth restoring
+        syncAccount(); emit accountChanged();
+    });
+    connect(m_auth, &SupabaseAuth::restoreRejected, this, [this] { rememberSession({}); });
+    m_auth->setRedirectUrl(QUrl(qEnvironmentVariable("MNAKA_SITE_URL"), QUrl::StrictMode));
+    // An email link that failed returns here with a reason; say what to do next.
+    const auto linkError = qEnvironmentVariable("MNAKA_AUTH_ERROR");
+    if (!linkError.isEmpty() && m_accountNotice.isEmpty())
+        m_accountNotice = linkError == "otp_expired"
+            ? "That email link has expired or was already used. Enter your email below and choose Resend confirmation email."
+            : "That email link could not be used" + (qEnvironmentVariable("MNAKA_AUTH_ERROR_DESCRIPTION").isEmpty() ? QString(".")
+                : ": " + qEnvironmentVariable("MNAKA_AUTH_ERROR_DESCRIPTION").left(200) + ".");
+    // A session from an email link wins over a remembered one.
+    if (const auto store = sessionStore()) m_rememberedToken = store->value("account/refreshToken").toString();
+    const auto linkToken = qEnvironmentVariable("MNAKA_AUTH_REFRESH_TOKEN");
+    m_auth->restore(linkToken.isEmpty() ? m_rememberedToken : linkToken);
     connect(m_auth, &SupabaseAuth::notice, this, [this](QString message) { m_accountNotice = message; emit accountChanged(); });
 }
 WorkspaceModel::~WorkspaceModel() { delete m_runtime; } // the orchestrator must go before its store
@@ -98,7 +128,17 @@ QString WorkspaceModel::accountEmail() const { return m_auth ? m_auth->email() :
 bool WorkspaceModel::accountBusy() const { return m_auth && m_auth->busy(); }
 void WorkspaceModel::signIn(QString email, QString password) { if (m_auth) m_auth->signIn(email, password); }
 void WorkspaceModel::signUp(QString email, QString password) { if (m_auth) m_auth->signUp(email, password); }
-void WorkspaceModel::signOut() { if (m_auth) m_auth->signOut(); }
+void WorkspaceModel::signOut() { if (!m_auth) return; rememberSession({}); m_auth->signOut(); }
+void WorkspaceModel::resendConfirmation(QString email) { if (m_auth) m_auth->resendConfirmation(email); }
+bool WorkspaceModel::sessionPersists() const { return sessionStore() != nullptr; }
+void WorkspaceModel::rememberSession(const QString &refreshToken) {
+    if (refreshToken == m_rememberedToken) return;
+    m_rememberedToken = refreshToken;
+    const auto store = sessionStore();
+    if (!store) return;
+    if (refreshToken.isEmpty()) store->remove("account/refreshToken"); else store->setValue("account/refreshToken", refreshToken);
+    store->sync();
+}
 
 void WorkspaceModel::clearImage() {
     ++m_imageGeneration; m_imagePreview.clear(); m_imageNotice.clear(); m_imageLoading = false;

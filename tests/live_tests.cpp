@@ -4,6 +4,7 @@
 #include <QJsonObject>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QSettings>
 #include <QUrlQuery>
 #include "apps/client/WorkspaceModel.h"
 #include "engines/software/LineDiff.h"
@@ -15,6 +16,7 @@ public:
     QJsonArray history;
     int assistantStatus = 200;
     bool modelConfigured = true;
+    int tokenStatus = 200;
     QJsonObject lastAssistantBody, lastDeveloperBody, developerReply;
     int developerStatus = 200;
     QByteArray lastAuthorization;
@@ -42,7 +44,8 @@ public:
                 calls.append(verb + " " + target.section('?', 0, 0));
                 int status = 200; QJsonDocument answer;
                 const auto path = target.section('?', 0, 0);
-                if (path == "/auth/v1/token") answer = QJsonDocument(QJsonObject{{"access_token", "access-1"}, {"refresh_token", "refresh-1"}, {"expires_in", 3600},
+                if (path == "/auth/v1/token" && tokenStatus != 200) { status = tokenStatus; answer = QJsonDocument(QJsonObject{{"msg", "Invalid Refresh Token"}}); }
+                else if (path == "/auth/v1/token") answer = QJsonDocument(QJsonObject{{"access_token", "access-1"}, {"refresh_token", "refresh-1"}, {"expires_in", 3600},
                     {"user", QJsonObject{{"id", "2f1c6f0e-9a53-4b7e-8d1a-3c5b7e9f0a12"}, {"email", "user@example.test"}}}});
                 else if (path == "/auth/v1/logout") status = 204;
                 else if (lastAuthorization != "Bearer access-1") { status = 401; answer = QJsonDocument(QJsonObject{{"code", "UNAUTHENTICATED"}}); }
@@ -84,7 +87,59 @@ class LiveTests : public QObject {
         return {};
     }
 private slots:
-    void cleanup() { qunsetenv("MNAKA_SUPABASE_URL"); qunsetenv("MNAKA_SUPABASE_PUBLISHABLE_KEY"); }
+    void cleanup() {
+        for (const char *name : {"MNAKA_SUPABASE_URL", "MNAKA_SUPABASE_PUBLISHABLE_KEY", "MNAKA_SESSION_FILE", "MNAKA_AUTH_ERROR",
+                "MNAKA_AUTH_ERROR_DESCRIPTION", "MNAKA_AUTH_REFRESH_TOKEN"}) qunsetenv(name);
+    }
+    void sessionIsRememberedRestoredAndForgotten() {
+        FakeProject project; project.configure();
+        { WorkspaceModel model; QVERIFY(!model.sessionPersists()); } // a desktop keeps nothing unless told where
+        QTemporaryDir directory;
+        const auto file = directory.filePath("session.ini");
+        qputenv("MNAKA_SESSION_FILE", file.toUtf8());
+        const auto saved = [&file] { return QSettings(file, QSettings::IniFormat).value("account/refreshToken").toString(); };
+        {
+            WorkspaceModel model;
+            QVERIFY(model.sessionPersists());
+            QTest::qWait(100);
+            QVERIFY(project.calls.isEmpty()); // nothing saved yet: nothing to restore
+            model.signIn("user@example.test", "password");
+            QTRY_VERIFY(model.connected());
+            QCOMPARE(saved(), QString("refresh-1"));
+        }
+        {
+            WorkspaceModel model; // a later start: signed in again without a password
+            QTRY_VERIFY(model.connected());
+            QCOMPARE(model.accountEmail(), QString("user@example.test"));
+            model.signOut();
+            QVERIFY(!model.connected());
+            QVERIFY(saved().isEmpty());
+        }
+        { QSettings store(file, QSettings::IniFormat); store.setValue("account/refreshToken", "revoked"); }
+        project.tokenStatus = 400;
+        {
+            WorkspaceModel model;
+            QTRY_VERIFY(model.accountNotice().contains("expired"));
+            QVERIFY(!model.connected());
+            QVERIFY(saved().isEmpty()); // a refused token is not offered again
+        }
+    }
+    void emailLinkResultsAreHandled() {
+        FakeProject project; project.configure();
+        qputenv("MNAKA_AUTH_ERROR", "otp_expired");
+        {
+            WorkspaceModel model;
+            QVERIFY(model.accountNotice().contains("Resend confirmation email"));
+            QVERIFY(!model.connected());
+            model.resendConfirmation("user@example.test");
+            QTRY_VERIFY(project.calls.contains("POST /auth/v1/resend"));
+        }
+        qputenv("MNAKA_AUTH_ERROR", "access_denied"); qputenv("MNAKA_AUTH_ERROR_DESCRIPTION", "Link is invalid");
+        { WorkspaceModel model; QVERIFY(model.accountNotice().contains("Link is invalid")); }
+        qunsetenv("MNAKA_AUTH_ERROR"); qunsetenv("MNAKA_AUTH_ERROR_DESCRIPTION");
+        qputenv("MNAKA_AUTH_REFRESH_TOKEN", "from-email-link"); // a confirmation link signs the user in
+        { WorkspaceModel model; QTRY_VERIFY(model.connected()); QCOMPARE(model.accountEmail(), QString("user@example.test")); }
+    }
     void signedOutClientSendsNothing() {
         FakeProject project; project.configure();
         WorkspaceModel model;

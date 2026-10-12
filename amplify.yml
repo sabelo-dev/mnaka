@@ -6,14 +6,37 @@ frontend:
   phases:
     build:
       commands:
+        # The page must name a release whose files are actually present.
         - test -f dist/index.html
-        - test -f dist/mnaka_client.wasm
-        - test -f dist/mnaka_client.js
+        - test -f dist/release.json
+        - RELEASE=$(sed -n 's/.*"id":"\([0-9a-f]*\)".*/\1/p' dist/release.json)
+        - test -n "$RELEASE"
+        - test -f "dist/r/$RELEASE/mnaka_client.wasm"
+        - test -f "dist/r/$RELEASE/mnaka_client.js"
+        - grep -q "r/$RELEASE/mnaka-boot.js" dist/index.html
   artifacts:
     baseDirectory: dist
     files:
       - '**/*'
 customHeaders:
+  # Files under r/<release>/ never change once published.
+  - pattern: '/r/**'
+    headers:
+      - key: Cache-Control
+        value: public, max-age=31536000, immutable
+  # The page and the small files beside it name the release, so they are checked on every load.
+  - pattern: '/'
+    headers:
+      - key: Cache-Control
+        value: public, max-age=0, must-revalidate
+  - pattern: '/*.html'
+    headers:
+      - key: Cache-Control
+        value: public, max-age=0, must-revalidate
+  - pattern: '/*.json'
+    headers:
+      - key: Cache-Control
+        value: public, max-age=0, must-revalidate
   - pattern: '**'
     headers:
       # 'wasm-unsafe-eval' only permits compiling WebAssembly; Qt injects one inline stylesheet.
@@ -32,6 +55,3 @@ customHeaders:
         value: camera=(), microphone=(self), geolocation=()
       - key: Cross-Origin-Opener-Policy
         value: same-origin
-      # File names are not content-hashed, so browsers revalidate on every load.
-      - key: Cache-Control
-        value: public, max-age=0, must-revalidate

@@ -2,6 +2,7 @@
 #include <QJsonDocument>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
+#include <QUrlQuery>
 #include <QUuid>
 
 namespace mnaka {
@@ -51,7 +52,29 @@ void SupabaseAuth::signIn(const QString &email, const QString &password) {
 }
 void SupabaseAuth::signUp(const QString &email, const QString &password) {
     if (acceptCredentials(email.trimmed(), password))
-        post(Request::SignUp, "/auth/v1/signup", {{"email", email.trimmed()}, {"password", password}});
+        post(Request::SignUp, "/auth/v1/signup" + redirectQuery("?"), {{"email", email.trimmed()}, {"password", password}});
+}
+void SupabaseAuth::setRedirectUrl(const QUrl &url) {
+    const bool loopback = url.host() == "127.0.0.1" || url.host() == "localhost";
+    const bool usable = url.isValid() && !url.host().isEmpty() && url.userInfo().isEmpty()
+        && (url.scheme() == "https" || (loopback && url.scheme() == "http"));
+    m_redirect = usable ? url : QUrl();
+}
+QString SupabaseAuth::redirectQuery(const QString &separator) const {
+    if (m_redirect.isEmpty()) return {};
+    return separator + "redirect_to=" + QString::fromLatin1(QUrl::toPercentEncoding(m_redirect.toString(QUrl::RemoveFragment | QUrl::RemoveQuery)));
+}
+void SupabaseAuth::restore(const QString &refreshToken) {
+    if (!m_configError.isEmpty() || busy() || signedIn() || refreshToken.isEmpty() || refreshToken.size() > 4096) return;
+    post(Request::Restore, "/auth/v1/token?grant_type=refresh_token", {{"refresh_token", refreshToken}});
+}
+void SupabaseAuth::resendConfirmation(const QString &email) {
+    const auto address = email.trimmed();
+    if (!m_configError.isEmpty()) emit notice(m_configError);
+    else if (busy()) emit notice("An account request is already in progress.");
+    else if (signedIn()) emit notice("You are already signed in.");
+    else if (address.size() < 3 || address.size() > 320 || !address.contains('@')) emit notice("Enter the email address you signed up with.");
+    else post(Request::Resend, "/auth/v1/resend" + redirectQuery("?"), {{"type", "signup"}, {"email", address}});
 }
 void SupabaseAuth::signOut() {
     if (!signedIn()) return;
@@ -98,6 +121,15 @@ void SupabaseAuth::finish(Request kind, int status, bool transportFailed, const 
         m_userId = userId.toString(QUuid::WithoutBraces); m_email = user["email"].toString().left(320);
         m_refresh.start(qMax(30, expiresIn - 60) * 1000);
         if (kind != Request::Refresh) emit notice({});
+    } else if (kind == Request::Restore) {
+        // Offline at start-up is not a reason to forget the saved sign-in; a refusal is.
+        if (transportFailed) emit notice("Could not reach the account service to restore your sign-in. Check your connection, then sign in.");
+        else { emit restoreRejected(); emit notice("Your saved sign-in has expired. Sign in again."); }
+    } else if (kind == Request::Resend) {
+        if (transportFailed) emit notice("The account service could not be reached.");
+        else if (status == 200) emit notice("If that address has an unconfirmed account, a new confirmation email is on its way.");
+        else if (status == 429) emit notice("A confirmation email was sent recently. Wait a minute before asking for another.");
+        else emit notice("The confirmation email could not be sent.");
     } else if (kind == Request::Refresh) {
         // A network blip keeps the session until the access token would have lapsed anyway.
         if (transportFailed) m_refresh.start(30000);
@@ -111,8 +143,10 @@ void SupabaseAuth::finish(Request kind, int status, bool transportFailed, const 
         auto message = body["msg"].toString();
         if (message.isEmpty()) message = body["error_description"].toString();
         if (message.isEmpty()) message = body["message"].toString();
+        const bool unconfirmed = body["error_code"].toString() == "email_not_confirmed" || message.contains("not confirmed", Qt::CaseInsensitive);
         emit notice((kind == Request::SignUp ? "Account not created" : "Sign-in failed")
-            + (message.isEmpty() ? QString(" (HTTP %1).").arg(status) : ": " + message.left(200)));
+            + (message.isEmpty() ? QString(" (HTTP %1).").arg(status) : ": " + message.left(200))
+            + (unconfirmed ? ". Open the link in your confirmation email, or choose Resend confirmation email." : QString()));
     }
     emit changed();
 }

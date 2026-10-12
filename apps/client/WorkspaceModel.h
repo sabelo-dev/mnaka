@@ -44,6 +44,8 @@ class WorkspaceModel : public QObject {
     Q_PROPERTY(QString accountEmail READ accountEmail NOTIFY accountChanged)
     Q_PROPERTY(bool accountBusy READ accountBusy NOTIFY accountChanged)
     Q_PROPERTY(QString accountNotice READ accountNotice NOTIFY accountChanged)
+    // True where the sign-in is kept on this device until the user signs out.
+    Q_PROPERTY(bool sessionPersists READ sessionPersists CONSTANT)
     // True while a signed-in account session runs against the project's own model.
     Q_PROPERTY(bool connected READ connected NOTIFY changed)
     // Whether the account gateway has a model endpoint: "unknown", "ready" or "missing".
@@ -81,6 +83,7 @@ public:
     QString accountEmail() const;
     bool accountBusy() const;
     QString accountNotice() const { return m_accountNotice; }
+    bool sessionPersists() const;
     bool connected() const { return m_live; }
     QString modelStatus() const { return m_modelStatus; }
     DeveloperSession *developer() const { return m_developer; }
@@ -111,6 +114,7 @@ public:
     Q_INVOKABLE void signIn(QString email, QString password);
     Q_INVOKABLE void signUp(QString email, QString password);
     Q_INVOKABLE void signOut();
+    Q_INVOKABLE void resendConfirmation(QString email);
     Q_INVOKABLE bool submit(QString text, QString mode);
     Q_INVOKABLE void cancel();
     Q_INVOKABLE void clearHistory();
@@ -128,6 +132,7 @@ signals:
     void dataChanged();
 private:
     void syncAccount();
+    void rememberSession(const QString &refreshToken);
     void loadAccountData();
     void startRuntime(mnaka::ModelProvider *provider, const QString &assistantStatus, const QHash<QString, QString> &engineStatus);
     void stopRuntime();
@@ -148,7 +153,7 @@ private:
     bool m_mock = false, m_live = false, m_imageInterpreting = false;
     quint64 m_sessionGeneration = 0;
     QVariantList m_memories, m_skills, m_rules;
-    QString m_dataNotice, m_imageAnswer, m_modelStatus = "unknown";
+    QString m_dataNotice, m_imageAnswer, m_modelStatus = "unknown", m_rememberedToken;
     QJsonObject m_validManifest;
     bool m_imageLoading = false;
     quint64 m_imageGeneration = 0;

@@ -147,6 +147,68 @@ private slots:
         QCOMPARE(server.lastPath, QString("/auth/v1/token?grant_type=refresh_token"));
         QCOMPARE(server.lastBody["refresh_token"].toString(), QString("refresh-1"));
     }
+    void restoreSignsInAndARefusedTokenIsReported() {
+        FakeAuthServer server; server.response = session();
+        SupabaseAuth auth(server.url(), key);
+        QSignalSpy rejected(&auth, &SupabaseAuth::restoreRejected);
+        auth.restore("saved-1");
+        QTRY_VERIFY(auth.signedIn());
+        QCOMPARE(server.lastPath, QString("/auth/v1/token?grant_type=refresh_token"));
+        QCOMPARE(server.lastBody["refresh_token"].toString(), QString("saved-1"));
+        QCOMPARE(auth.refreshToken(), QString("refresh-1")); // the rotated token is the one to keep
+        QCOMPARE(rejected.size(), 0);
+
+        server.status = 400; server.response = {{"error_code", "refresh_token_not_found"}, {"msg", "Invalid Refresh Token"}};
+        SupabaseAuth stale(server.url(), key);
+        QSignalSpy staleRejected(&stale, &SupabaseAuth::restoreRejected);
+        QSignalSpy notices(&stale, &SupabaseAuth::notice);
+        stale.restore("old");
+        QTRY_COMPARE(staleRejected.size(), 1);
+        QVERIFY(!stale.signedIn());
+        QVERIFY(notices.last().first().toString().contains("expired"));
+        stale.restore(""); // nothing saved: nothing sent
+        QVERIFY(!stale.busy());
+    }
+    void restoreWhileOfflineKeepsTheSavedSignIn() {
+        QUrl dead;
+        { QTcpServer probe; probe.listen(QHostAddress::LocalHost); dead = QUrl(QString("http://127.0.0.1:%1").arg(probe.serverPort())); }
+        SupabaseAuth auth(dead, key);
+        QSignalSpy rejected(&auth, &SupabaseAuth::restoreRejected);
+        QSignalSpy notices(&auth, &SupabaseAuth::notice);
+        auth.restore("saved-1");
+        QTRY_COMPARE_WITH_TIMEOUT(notices.size(), 1, 20000);
+        QCOMPARE(rejected.size(), 0);
+        QVERIFY(notices.last().first().toString().contains("Could not reach"));
+    }
+    void resendConfirmationAndUnconfirmedSignIn() {
+        FakeAuthServer server; server.response = {};
+        SupabaseAuth auth(server.url(), key);
+        QSignalSpy notices(&auth, &SupabaseAuth::notice);
+        auth.resendConfirmation("not-an-email");
+        QCOMPARE(notices.size(), 1);
+        QVERIFY(server.lastPath.isEmpty());
+        auth.setRedirectUrl(QUrl("http://evil.example/")); // not https: ignored
+        auth.resendConfirmation(" user@example.test ");
+        QTRY_COMPARE(notices.size(), 2);
+        QCOMPARE(server.lastPath, QString("/auth/v1/resend"));
+        QCOMPARE(server.lastBody["type"].toString(), QString("signup"));
+        QCOMPARE(server.lastBody["email"].toString(), QString("user@example.test"));
+        QVERIFY(notices.last().first().toString().contains("on its way"));
+        auth.setRedirectUrl(QUrl("https://app.example/mnaka/#secret"));
+        auth.resendConfirmation("user@example.test");
+        QTRY_COMPARE(notices.size(), 3);
+        QCOMPARE(server.lastPath, QString("/auth/v1/resend?redirect_to=https%3A%2F%2Fapp.example%2Fmnaka%2F"));
+        server.status = 429;
+        auth.resendConfirmation("user@example.test");
+        QTRY_COMPARE(notices.size(), 4);
+        QVERIFY(notices.last().first().toString().contains("recently"));
+
+        server.status = 400; server.response = {{"error_code", "email_not_confirmed"}, {"msg", "Email not confirmed"}};
+        auth.signIn("user@example.test", "password");
+        QTRY_COMPARE(notices.size(), 5);
+        QVERIFY(notices.last().first().toString().contains("Resend confirmation email"));
+        QVERIFY(!auth.signedIn());
+    }
 };
 QTEST_MAIN(AuthTests)
 #include "auth_tests.moc"
