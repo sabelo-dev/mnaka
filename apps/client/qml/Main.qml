@@ -572,7 +572,7 @@ ApplicationWindow {
                                             visible: workspace.voice.available
                                             implicitWidth: 40; implicitHeight: 40
                                             Accessible.name: window.voiceActive ? "Stop listening" : "Speak a message"
-                                            onClicked: window.voiceActive ? workspace.voice.stop() : workspace.voice.start()
+                                            onClicked: { if (workspace.voice.handsFree) workspace.voice.handsFree = false; else if (window.voiceActive) workspace.voice.stop(); else workspace.voice.start() }
                                             contentItem: Item { Icon { anchors.centerIn: parent; path: window.icons.mic; tint: window.voiceActive ? "#021006" : window.cyan; size: 18 } }
                                             background: Rectangle { radius: 2; color: window.voiceActive ? "#ffb000" : talk.hovered ? "#0b2015" : "transparent"; border.color: talk.activeFocus || !window.voiceActive ? "#1f5a3c" : "#ffb000" }
                                         }
@@ -608,9 +608,9 @@ ApplicationWindow {
                                     Caption {
                                         Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter
                                         color: workspace.voice.partial.length > 0 ? window.ink : window.muted
-                                        text: window.voiceActive ? (workspace.voice.partial.length > 0 ? workspace.voice.partial : workspace.voice.handsFree ? "Yes? Say your request." : "Speak now. Press the microphone again to finish.")
+                                        text: window.voiceActive ? (workspace.voice.partial.length > 0 ? workspace.voice.partial : workspace.voice.openMicrophone ? "Say your request. Everything heard is sent." : workspace.voice.handsFree ? "Yes? Say your request." : "Speak now. Press the microphone again to finish.")
                                             : window.voiceWaiting && workspace.voice.partial.length > 0 ? workspace.voice.partial
-                                            : window.voiceWaiting && workspace.voice.notice.length === 0 && window.voiceNotice.length === 0 && !workspace.busy ? "Hands-free is on. Say \"Mnaka\" and then your request, for example \"Mnaka, open settings\"."
+                                            : window.voiceWaiting && workspace.voice.notice.length === 0 && window.voiceNotice.length === 0 && !workspace.busy ? "Hands-free is on. Say \"Mnaka\" and then your request, or press the microphone to keep it listening all the time."
                                             : workspace.voice.notice.length > 0 ? workspace.voice.notice
                                             : window.voiceNotice.length > 0 ? window.voiceNotice
                                             : workspace.state === "Awaiting approval" ? "Review the requested action under Approval required."
@@ -626,23 +626,23 @@ ApplicationWindow {
                                         Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 10
                                         implicitWidth: 56; implicitHeight: 56
                                         Accessible.name: window.voiceActive ? "Stop listening" : "Start listening"
-                                        onClicked: window.voiceActive ? workspace.voice.stop() : workspace.voice.start()
+                                        onClicked: { if (workspace.voice.handsFree) workspace.voice.handsFree = false; else if (window.voiceActive) workspace.voice.stop(); else workspace.voice.start() }
                                         contentItem: Item { Icon { anchors.centerIn: parent; path: window.icons.mic; tint: window.voiceActive ? "#021006" : window.cyan; size: 24 } }
                                         background: Rectangle { radius: 28; color: window.voiceActive ? "#ffb000" : orbTalk.hovered ? "#0b2015" : "#020a06"; border.color: window.voiceActive ? "#ffb000" : orbTalk.activeFocus ? window.ink : window.cyan; border.width: 2 }
                                     }
                                     Switch {
                                         visible: workspace.voice.available
                                         Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 6
-                                        text: "Hands-free: listen for \"Mnaka\""
+                                        text: "Hands-free: always listening"
                                         checked: workspace.voice.handsFree
-                                        Accessible.name: "Hands-free listening for the word Mnaka"
+                                        Accessible.name: "Hands-free, always listening"
                                         onToggled: workspace.voice.handsFree = checked
                                     }
                                     Caption {
                                         visible: workspace.voice.available; Layout.fillWidth: true; Layout.topMargin: 4; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 11
                                         color: workspace.voice.handsFree ? "#f5d28a" : window.muted
                                         text: workspace.voice.handsFree
-                                            ? "Hands-free keeps the microphone on while this page is open. The browser hears everything said nearby and, in Chrome and Edge, sends that audio to the browser vendor's speech service. MNAKA acts only on speech that starts with \"Mnaka\" and discards the rest. Turn it off when you are not using it."
+                                            ? (workspace.voice.openMicrophone ? "Always listening: everything the browser hears is taken as a request and sent to the model, without \"Mnaka\" in front. That includes other people, a television or a call. Press the microphone or this switch to stop." : "Hands-free keeps the microphone on while this page is open. The browser hears everything said nearby and, in Chrome and Edge, sends that audio to the browser vendor's speech service. MNAKA acts only on speech that starts with \"Mnaka\" and discards the rest. Turn it off when you are not using it.")
                                             : "Speech is recognised by this browser. In Chrome and Edge the audio goes to the browser vendor's speech service; MNAKA and the model receive only the text."
                                     }
                                 }
@@ -1263,7 +1263,7 @@ ApplicationWindow {
                                     "Your conversations, memories, skills and rules are saved in your account as plain text, and only while you are signed in.",
                                     "Messages, and the files you add in the Developer workspace, are sent to the model set on your account gateway" + (workspace.modelName.length > 0 ? " (currently " + workspace.modelName + ")" : "") + " when you ask for something.",
                                     "An image leaves this device only when you choose Interpret. It is not stored.",
-                                    workspace.voice.handsFree ? "Hands-free is on: the microphone stays on while this page is open, and the browser's speech service hears what is said nearby. Camera and location are never used." : "The microphone is used only while you press the microphone button, unless you turn on hands-free. Camera and location are never used.",
+                                    workspace.voice.openMicrophone ? "Always listening is on: everything heard near this device while this page is open is sent to the model as a request. Camera and location are never used." : workspace.voice.handsFree ? "Hands-free is on: the microphone stays on while this page is open, and the browser's speech service hears what is said nearby. Camera and location are never used." : "The microphone is used only while you press the microphone button, unless you turn on hands-free. Camera and location are never used.",
                                     workspace.sessionPersists ? "You stay signed in on this device until you sign out. Signing out removes the saved sign-in." : "Your sign-in lasts until you close MNAKA. It is not kept on this device."
                                 ]
                                 RowLayout {

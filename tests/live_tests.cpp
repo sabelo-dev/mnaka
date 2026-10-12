@@ -293,6 +293,8 @@ private slots:
         VoiceInput voice;
         QSignalSpy heard(&voice, &VoiceInput::recognized);
         voice.setHandsFree(true);
+        QVERIFY(voice.openMicrophone() && voice.awaitingRequest()); // hands-free listens for requests from the start
+        voice.setOpenMicrophone(false); // answering only to its name
         voice.handleEvent("final", "did you see the match last night");
         voice.handleEvent("final", "I think Mnaka is listening");
         QCOMPARE(heard.size(), 0); // bystander speech goes nowhere
@@ -312,9 +314,27 @@ private slots:
         QVERIFY(!voice.awaitingRequest());
         voice.handleEvent("final", "open settings"); // window closed: ignored again
         QCOMPARE(heard.size(), 2);
+        // Open microphone: every utterance is a request, for as long as it stays latched.
+        voice.setOpenMicrophone(true);
+        QVERIFY(voice.openMicrophone() && voice.awaitingRequest() && voice.handsFree());
+        voice.handleEvent("final", "what is the capital of Kenya");
+        voice.handleEvent("final", "Mnaka open tasks");
+        voice.handleEvent("final", "and one more thing");
+        QCOMPARE(heard.size(), 5);
+        QCOMPARE(heard[2].first().toString(), QString("what is the capital of Kenya"));
+        QCOMPARE(heard[3].first().toString(), QString("open tasks")); // the name is still stripped
+        QVERIFY(voice.awaitingRequest()); // it does not time out or close after a request
+        voice.handleEvent("end", ""); // the browser ending a session does not unlatch it
+        voice.stop();
+        QVERIFY(voice.openMicrophone() && voice.awaitingRequest());
+        voice.setOpenMicrophone(false);
+        QVERIFY(!voice.awaitingRequest() && voice.handsFree());
+        voice.handleEvent("final", "nobody asked");
+        QCOMPARE(heard.size(), 5); // back to answering only to its name
+        voice.setOpenMicrophone(true);
         // A refused microphone turns hands-free off rather than retrying for ever.
         voice.handleEvent("error", "not-allowed");
-        QVERIFY(!voice.handsFree());
+        QVERIFY(!voice.handsFree() && !voice.openMicrophone() && !voice.awaitingRequest());
         QVERIFY(voice.notice().contains("refused"));
         // Without hands-free, a pressed microphone sends whatever was said, name or not.
         voice.handleEvent("final", "what is the capital of France");

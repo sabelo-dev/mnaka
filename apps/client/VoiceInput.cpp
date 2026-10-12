@@ -92,13 +92,24 @@ void VoiceInput::setHandsFree(bool enabled) {
 #ifdef Q_OS_WASM
     QSettings().setValue("voice/handsFree", enabled);
 #endif
-    if (enabled) { if (!m_sessionRunning) beginSession(); }
-    else { m_restart.stop(); awaitRequest(false); stop(); }
+    if (enabled) { if (!m_sessionRunning) beginSession(); setOpenMicrophone(true); } // hands-free is always listening
+    else { m_restart.stop(); setOpenMicrophone(false); awaitRequest(false); stop(); }
+    emit changed();
+}
+void VoiceInput::setOpenMicrophone(bool enabled) {
+    if (enabled == m_openMicrophone) return;
+    if (enabled && !m_handsFree) setHandsFree(true);
+    m_openMicrophone = enabled;
+    m_notice.clear(); m_partial.clear();
+#ifdef Q_OS_WASM
+    QSettings().setValue("voice/openMicrophone", enabled);
+#endif
+    awaitRequest(enabled);
     emit changed();
 }
 void VoiceInput::awaitRequest(bool awaiting) {
-    m_awaitingRequest = awaiting;
-    if (awaiting) m_requestWindow.start(); else m_requestWindow.stop();
+    m_awaitingRequest = awaiting || m_openMicrophone; // an open microphone never stops awaiting
+    if (awaiting && !m_openMicrophone) m_requestWindow.start(); else m_requestWindow.stop();
 }
 void VoiceInput::start() {
     if (!m_available) return;
@@ -192,7 +203,7 @@ void VoiceInput::handleEvent(const QString &kind, const QString &text) {
         const bool refused = text == "not-allowed" || text == "service-not-allowed";
         if (refused || text == "audio-capture" || text == "start-failed") {
             // Nothing a retry would fix: stop asking until the user turns it on again.
-            m_sessionRunning = false; m_listening = false; awaitRequest(false); m_restart.stop();
+            m_sessionRunning = false; m_listening = false; setOpenMicrophone(false); awaitRequest(false); m_restart.stop();
             if (m_handsFree) { m_handsFree = false;
 #ifdef Q_OS_WASM
                 QSettings().setValue("voice/handsFree", false);

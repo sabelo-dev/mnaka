@@ -19,6 +19,10 @@ class VoiceInput : public QObject {
     Q_PROPERTY(bool available READ available CONSTANT)
     Q_PROPERTY(bool listening READ listening NOTIFY changed)
     Q_PROPERTY(bool handsFree READ handsFree WRITE setHandsFree NOTIFY changed)
+    // Open microphone: a hands-free session that stays ready for a request the whole time, so
+    // every utterance is taken as one and no wake word is needed. Turning hands-free on turns
+    // this on with it; clearing it leaves hands-free answering only to its name.
+    Q_PROPERTY(bool openMicrophone READ openMicrophone WRITE setOpenMicrophone NOTIFY changed)
     // True for a few seconds after the wake word alone, or after the microphone is pressed:
     // the next thing said is the request.
     Q_PROPERTY(bool awaitingRequest READ awaitingRequest NOTIFY changed)
@@ -31,6 +35,8 @@ public:
     bool listening() const { return m_listening; }
     bool handsFree() const { return m_handsFree; }
     void setHandsFree(bool enabled);
+    bool openMicrophone() const { return m_openMicrophone; }
+    void setOpenMicrophone(bool enabled);
     bool awaitingRequest() const { return m_awaitingRequest; }
     QString partial() const { return m_partial; }
     QString notice() const { return m_notice; }
@@ -51,7 +57,7 @@ signals:
 private:
     void beginSession();
     void awaitRequest(bool awaiting);
-    bool m_available = false, m_listening = false, m_handsFree = false, m_awaitingRequest = false, m_sessionRunning = false;
+    bool m_available = false, m_listening = false, m_handsFree = false, m_awaitingRequest = false, m_sessionRunning = false, m_openMicrophone = false;
     QString m_partial, m_notice;
     QTimer m_restart, m_requestWindow;
 };

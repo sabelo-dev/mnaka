@@ -600,3 +600,18 @@ word. When hands-free hears something not addressed to MNAKA it shows that utter
 first word only, so a persistent mishearing can be seen. Still unverified with real
 speech. `account_session_contract` failed once in a full run (20 s) and passed on every
 rerun; treat it as possibly timing-sensitive.
+
+## Always-listening microphone
+
+Turning hands-free on opens the microphone for good: the request window no longer
+closes after eight seconds or after a request, every utterance is taken as a request
+without the wake word, and the choice survives a reload. No microphone press is needed.
+Pressing the microphone or the switch turns hands-free off; a refused microphone also
+ends it. The wake-word-only mode remains in `VoiceInput` but the interface no longer
+offers it. In this mode everything the recogniser hears nearby,
+including other people, is submitted, and each utterance is a model request when signed
+in. The interface says so while it is on.
+
+Verified: unit cases in `handsFreeActsOnlyOnAddressedSpeech`; twelve targets pass; in
+headless Chrome with a simulated recogniser the state held for 13 s, after a reload, and
+cleared on a microphone press (release `e66dafae6f87`). Not verified with a real microphone.
