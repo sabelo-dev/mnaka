@@ -24,7 +24,11 @@ bool GatewayModelProvider::start(QUuid id, QJsonObject request) {
     call.setRawHeader("Authorization", "Bearer " + token.toLatin1());
     call.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
     call.setTransferTimeout(120000);
-    auto *reply = m_network->post(call, QJsonDocument(QJsonObject{{"text", text}}).toJson(QJsonDocument::Compact));
+    // The mode selects a workflow on the gateway; it grants nothing.
+    const auto mode = request["mode"].toString();
+    QJsonObject body{{"text", text}};
+    if (mode == "developer" || mode == "autonomous") body["mode"] = mode;
+    auto *reply = m_network->post(call, QJsonDocument(body).toJson(QJsonDocument::Compact));
     m_replies.insert(id, reply);
     connect(reply, &QNetworkReply::finished, this, [this, id, reply] {
         reply->deleteLater();
@@ -44,7 +48,7 @@ bool GatewayModelProvider::start(QUuid id, QJsonObject request) {
                 : QStringList{"INVALID_ARGUMENT", "UNAUTHENTICATED", "RATE_LIMITED"}.contains(code) ? code : "PROVIDER_UNAVAILABLE");
         }
     });
-    emit delta(id, "Waiting for the model…");
+    emit delta(id, mode == "autonomous" ? "Planning, then working through each step…" : "Waiting for the model…");
     return true;
 }
 void GatewayModelProvider::cancel(QUuid id) {

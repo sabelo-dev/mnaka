@@ -179,10 +179,19 @@ private slots:
         QCOMPARE(model.messages().last().toMap()["text"].toString(), QString("Reply to: What is MNAKA?"));
         QVERIFY(!model.messages().last().toMap()["mock"].toBool());
         QCOMPARE(project.lastAssistantBody["text"].toString(), QString("What is MNAKA?"));
+        QVERIFY(!project.lastAssistantBody.contains("mode")); // plain conversation is the gateway's default
         QCOMPARE(model.tasks().size(), 1);
         QCOMPARE(model.tasks().first().toMap()["state"].toString(), QString("succeeded"));
         QVERIFY(!model.tasks().first().toMap()["evidence"].toString().contains("Mock"));
         QVERIFY(model.notice().isEmpty());
+
+        // The selected mode reaches the gateway, which runs a different workflow for it.
+        QVERIFY(model.submit("Plan a launch", "Autonomous"));
+        QTRY_VERIFY_WITH_TIMEOUT(!model.busy(), 10000);
+        QCOMPARE(project.lastAssistantBody["mode"].toString(), QString("autonomous"));
+        QVERIFY(model.submit("Write a parser", "Developer"));
+        QTRY_VERIFY_WITH_TIMEOUT(!model.busy(), 10000);
+        QCOMPARE(project.lastAssistantBody["mode"].toString(), QString("developer"));
     }
     void unavailableModelFailsTheTaskWithoutAReply() {
         FakeProject project; project.configure(); project.assistantStatus = 503; project.modelConfigured = false;

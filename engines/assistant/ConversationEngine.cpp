@@ -57,7 +57,7 @@ void ConversationEngine::plan(QUuid taskId, QJsonObject context, QJsonObject req
     if (m_contexts.contains(taskId)) return;
     const auto text = request["input"].toObject()["text"].toString();
     m_contexts.insert(taskId, context); m_requests.insert(taskId, text);
-    if (!m_provider->start(taskId, {{"text", text}})) {
+    if (!m_provider->start(taskId, {{"text", text}, {"mode", request["mode"].toString()}})) {
         m_contexts.remove(taskId); m_requests.remove(taskId);
         emit failed(taskId, "RATE_LIMITED", "Model provider capacity reached.");
     }

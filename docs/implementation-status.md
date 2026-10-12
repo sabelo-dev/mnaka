@@ -615,3 +615,19 @@ in. The interface says so while it is on.
 Verified: unit cases in `handsFreeActsOnlyOnAddressedSpeech`; twelve targets pass; in
 headless Chrome with a simulated recogniser the state held for 13 s, after a reload, and
 cleared on a microphone press (release `e66dafae6f87`). Not verified with a real microphone.
+
+## Workflow modes
+
+The mode selector used to send its value nowhere: all three modes ran the same request.
+The mode now reaches the `assistant` function, which runs a different workflow for each.
+Assistant is a quick reply at low effort. Developer adds an engineering brief and runs at
+medium effort. Autonomous makes one request for a plan of two to four steps, then one
+request per step with the earlier results in view, and returns the plan and each step's
+result; it starts no new step after 80 seconds and says which steps were not done. A mode
+selects a workflow only: none can run tools or act on the user's computer.
+
+Verified: the client sends the mode (`live_tests`); the function run under Deno against a
+stand-in Messages API produced the expected calls for each mode and rejected an unknown
+one; twelve targets pass; the restyled selector was checked in headless Chrome (release
+`ae9661632652`). Not verified: any mode against the real model, and the path where a
+step fails part-way through.

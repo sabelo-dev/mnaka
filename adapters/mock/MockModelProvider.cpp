@@ -7,7 +7,8 @@ bool MockModelProvider::start(QUuid id, QJsonObject request) {
     if (id.isNull() || m_seen.contains(id) || m_pending.size() >= 16 || m_seen.size() >= 1000) return false;
     m_seen.insert(id);
     const QJsonObject schema{{"type", "object"}, {"additionalProperties", false}, {"required", QJsonArray{"text"}},
-        {"properties", QJsonObject{{"text", QJsonObject{{"type", "string"}, {"minLength", 1}, {"maxLength", 4000}}}}}};
+        {"properties", QJsonObject{{"text", QJsonObject{{"type", "string"}, {"minLength", 1}, {"maxLength", 4000}}},
+            {"mode", QJsonObject{{"type", "string"}, {"maxLength", 32}}}}}};
     if (!SchemaValidator::validate(request, schema).isEmpty()) { emit failed(id, "INVALID_ARGUMENT"); return true; }
     auto timer = new QTimer(this); timer->setInterval(325);
     m_pending.insert(id, {request, timer, 0});

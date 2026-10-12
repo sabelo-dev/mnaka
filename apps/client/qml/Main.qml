@@ -229,6 +229,33 @@ ApplicationWindow {
         contentItem: Label { text: ghost.text; color: ghost.enabled ? window.ink : window.muted; font.pixelSize: 13; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
         background: Rectangle { radius: 2; color: ghost.hovered ? "#0b2015" : "transparent"; border.color: ghost.activeFocus ? window.cyan : "#1f5a3c" }
     }
+    component TermCombo: ComboBox {
+        id: combo
+        property var notes: [] // one line under each entry saying what choosing it does
+        implicitHeight: 40; leftPadding: 12; rightPadding: 34; font.pixelSize: 14
+        contentItem: Label { text: combo.displayText; color: window.ink; font.pixelSize: 14; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }
+        indicator: Label { x: combo.width - width - 12; y: (combo.height - height) / 2; text: combo.popup.visible ? "\u25B4" : "\u25BE"; color: window.cyan; font.pixelSize: 14 }
+        background: Rectangle { radius: 2; color: combo.popup.visible || combo.hovered ? "#0b2015" : "#020a06"; border.color: combo.activeFocus || combo.popup.visible ? window.accent : "#1f5a3c" }
+        delegate: ItemDelegate {
+            id: entry
+            required property int index
+            required property var modelData
+            width: ListView.view.width; padding: 10
+            highlighted: combo.highlightedIndex === index
+            contentItem: ColumnLayout {
+                spacing: 2
+                Label { text: (combo.currentIndex === entry.index ? "> " : "  ") + entry.modelData; color: combo.currentIndex === entry.index ? window.cyan : window.ink; font.pixelSize: 14; elide: Text.ElideRight; Layout.fillWidth: true }
+                Caption { visible: text.length > 0; text: combo.notes[entry.index] || ""; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true; Layout.leftMargin: 17 }
+            }
+            background: Rectangle { color: entry.highlighted ? "#0f2b1c" : "transparent" }
+        }
+        popup: Popup {
+            y: combo.height + 2; width: Math.max(combo.width, combo.notes.length > 0 ? 300 : 0); x: combo.width - width; padding: 1
+            implicitHeight: Math.min(contentItem.implicitHeight + 2, 420)
+            contentItem: ListView { clip: true; implicitHeight: contentHeight; model: combo.popup.visible ? combo.delegateModel : null; currentIndex: combo.highlightedIndex }
+            background: Rectangle { color: "#04100a"; border.color: window.accent; radius: 2 }
+        }
+    }
     component Field: TextField {
         id: field
         color: window.ink; placeholderTextColor: window.muted; font.pixelSize: 14
@@ -440,7 +467,7 @@ ApplicationWindow {
                 Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: window.line }
                 RowLayout {
                     anchors.fill: parent; anchors.leftMargin: window.compact ? 14 : 22; anchors.rightMargin: window.compact ? 14 : 22; spacing: 14
-                    ComboBox { visible: window.compact; model: window.pages; currentIndex: window.page; onActivated: window.page = currentIndex; Accessible.name: "Workspace screen"; Layout.preferredWidth: 150 }
+                    TermCombo { visible: window.compact; model: window.pages; currentIndex: window.page; onActivated: window.page = currentIndex; Accessible.name: "Workspace screen"; Layout.preferredWidth: 150 }
                     ColumnLayout {
                         visible: !window.compact; spacing: 2; Layout.fillWidth: true
                         Label { text: "> " + window.titles[window.page].toUpperCase(); color: window.cyan; font.pixelSize: 22; font.weight: Font.Bold; font.letterSpacing: 2; elide: Text.ElideRight; Layout.fillWidth: true }
@@ -453,7 +480,10 @@ ApplicationWindow {
                         Caption { text: workspace.connected ? (workspace.modelStatus === "failing" ? "Model not working" : workspace.modelStatus === "missing" ? "Model not set up" : "Connected") : workspace.mockSession ? "Mock session" : "Not connected" }
                     }
                     Pill { visible: !window.compact; text: "●  " + workspace.state; tint: workspace.busy ? "#ffb000" : window.cyan }
-                    ComboBox { id: mode; model: ["Assistant", "Developer", "Autonomous"]; Layout.preferredWidth: 170; Accessible.name: "Workflow mode" }
+                    TermCombo {
+                        id: mode; model: ["Assistant", "Developer", "Autonomous"]; Layout.preferredWidth: 170; Accessible.name: "Workflow mode"
+                        notes: ["Quick answers in conversation.", "Answers as a software engineer, with code and its risks.", "Plans the work, then does each step without asking. Uses several model requests and cannot act on your computer."]
+                    }
                 }
             }
             ScrollView {
