@@ -1,7 +1,7 @@
 // Assistant gateway. A signed-in client sends a message (and optionally one image); this function
 // forwards it to the owner's own model and stores the exchange in the caller's history.
 // The model endpoint and its key never reach the browser.
-import { authenticate, completeChat, cors, fail, reply } from "../_shared/gateway.ts";
+import { authenticate, completeChat, cors, fail, modelConfigured, reply } from "../_shared/gateway.ts";
 
 const MAX_TEXT = 4000;
 const MAX_IMAGE = 4_000_000; // characters of data URL
@@ -14,8 +14,10 @@ Deno.serve(async (request) => {
   const supabase = await authenticate(request);
   if (!supabase) return fail(401, "UNAUTHENTICATED", "Sign in to use the assistant.");
 
-  let input: { text?: unknown; image?: unknown };
+  let input: { text?: unknown; image?: unknown; probe?: unknown };
   try { input = await request.json(); } catch { return fail(400, "INVALID_ARGUMENT", "Body must be JSON."); }
+  // Lets the client show "model not set up" instead of failing on the first message. No model call is made.
+  if (input.probe === true) return reply(200, { configured: modelConfigured() });
   const text = typeof input.text === "string" ? input.text.trim() : "";
   if (text.length < 1 || text.length > MAX_TEXT) return fail(400, "INVALID_ARGUMENT", "Message must be 1 to 4000 characters.");
   const image = input.image === undefined ? null : input.image;

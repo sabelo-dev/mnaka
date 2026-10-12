@@ -14,6 +14,7 @@ public:
     QStringList calls;
     QJsonArray history;
     int assistantStatus = 200;
+    bool modelConfigured = true;
     QJsonObject lastAssistantBody, lastDeveloperBody, developerReply;
     int developerStatus = 200;
     QByteArray lastAuthorization;
@@ -45,6 +46,8 @@ public:
                     {"user", QJsonObject{{"id", "2f1c6f0e-9a53-4b7e-8d1a-3c5b7e9f0a12"}, {"email", "user@example.test"}}}});
                 else if (path == "/auth/v1/logout") status = 204;
                 else if (lastAuthorization != "Bearer access-1") { status = 401; answer = QJsonDocument(QJsonObject{{"code", "UNAUTHENTICATED"}}); }
+                else if (path == "/functions/v1/assistant" && body["probe"].toBool())
+                    answer = QJsonDocument(QJsonObject{{"configured", modelConfigured}});
                 else if (path == "/functions/v1/assistant") {
                     lastAssistantBody = body; status = assistantStatus;
                     answer = QJsonDocument(status == 200 ? QJsonObject{{"text", "Reply to: " + body["text"].toString()}, {"model", "test-model"}, {"saved", true}}
@@ -104,6 +107,7 @@ private slots:
         QTRY_COMPARE(model.messages().size(), 2);
         QCOMPARE(model.messages().first().toMap()["text"].toString(), QString("earlier question"));
         QVERIFY(status(model, "assistant").contains("Your model"));
+        QTRY_COMPARE(model.modelStatus(), QString("ready"));
         QVERIFY(status(model, "control").contains("desktop app"));
         for (const auto &value : model.capabilities()) {
             const auto entry = value.toMap();
@@ -124,10 +128,12 @@ private slots:
         QVERIFY(model.notice().isEmpty());
     }
     void unavailableModelFailsTheTaskWithoutAReply() {
-        FakeProject project; project.configure(); project.assistantStatus = 503;
+        FakeProject project; project.configure(); project.assistantStatus = 503; project.modelConfigured = false;
         WorkspaceModel model;
+        QCOMPARE(model.modelStatus(), QString("unknown"));
         model.signIn("user@example.test", "password");
         QTRY_VERIFY(model.connected());
+        QTRY_COMPARE(model.modelStatus(), QString("missing"));
         QVERIFY(model.submit("hello", "Assistant"));
         QTRY_VERIFY_WITH_TIMEOUT(!model.busy(), 10000);
         QCOMPARE(model.tasks().first().toMap()["state"].toString(), QString("failed"));

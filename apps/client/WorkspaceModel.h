@@ -46,6 +46,8 @@ class WorkspaceModel : public QObject {
     Q_PROPERTY(QString accountNotice READ accountNotice NOTIFY accountChanged)
     // True while a signed-in account session runs against the project's own model.
     Q_PROPERTY(bool connected READ connected NOTIFY changed)
+    // Whether the account gateway has a model endpoint: "unknown", "ready" or "missing".
+    Q_PROPERTY(QString modelStatus READ modelStatus NOTIFY changed)
     // The signed-in user's saved rows. Saving a skill or rule records it; nothing executes it.
     Q_PROPERTY(QVariantList memories READ memories NOTIFY dataChanged)
     Q_PROPERTY(QVariantList skills READ skills NOTIFY dataChanged)
@@ -80,6 +82,7 @@ public:
     bool accountBusy() const;
     QString accountNotice() const { return m_accountNotice; }
     bool connected() const { return m_live; }
+    QString modelStatus() const { return m_modelStatus; }
     DeveloperSession *developer() const { return m_developer; }
     VoiceInput *voice() const { return m_voice; }
     QVariantList memories() const { return m_memories; }
@@ -145,7 +148,7 @@ private:
     bool m_mock = false, m_live = false, m_imageInterpreting = false;
     quint64 m_sessionGeneration = 0;
     QVariantList m_memories, m_skills, m_rules;
-    QString m_dataNotice, m_imageAnswer;
+    QString m_dataNotice, m_imageAnswer, m_modelStatus = "unknown";
     QJsonObject m_validManifest;
     bool m_imageLoading = false;
     quint64 m_imageGeneration = 0;

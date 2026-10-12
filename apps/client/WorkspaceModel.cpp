@@ -241,6 +241,7 @@ void WorkspaceModel::syncAccount() {
     m_mock = false; m_live = signedIn;
     m_memories.clear(); m_skills.clear(); m_rules.clear(); m_dataNotice.clear();
     m_imageAnswer.clear(); m_imageInterpreting = false;
+    m_modelStatus = "unknown";
     m_developer->setGateway(signedIn ? m_data : nullptr);
     if (signedIn) {
         startRuntime(new GatewayModelProvider(m_auth->projectUrl(), m_auth->publishableKey(), m_token), "Your model, via account gateway", liveEngineStatus());
@@ -252,6 +253,11 @@ void WorkspaceModel::syncAccount() {
 void WorkspaceModel::failData(const QString &what) { m_dataNotice = what + " The account service did not accept the request."; emit dataChanged(); }
 void WorkspaceModel::loadAccountData() {
     const auto generation = m_sessionGeneration;
+    m_data->invoke("assistant", {{"probe", true}}, [this, generation](int status, QJsonDocument body) {
+        if (generation != m_sessionGeneration || status != 200 || !body.object()["configured"].isBool()) return;
+        m_modelStatus = body.object()["configured"].toBool() ? "ready" : "missing";
+        emit changed();
+    });
     m_data->list("mnaka_messages", "select=role,content&order=created_at.desc&limit=50", [this, generation](int status, QJsonDocument body) {
         if (generation != m_sessionGeneration) return;
         if (status != 200) { m_notice = "Saved conversation could not be loaded."; emit changed(); return; }

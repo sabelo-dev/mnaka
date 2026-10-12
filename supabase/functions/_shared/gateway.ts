@@ -24,6 +24,8 @@ export async function authenticate(request: Request): Promise<SupabaseClient | n
   return user ? supabase : null;
 }
 
+export const modelConfigured = () => Boolean((Deno.env.get("MNAKA_LLM_BASE_URL") ?? "").trim() && (Deno.env.get("MNAKA_LLM_MODEL") ?? "").trim());
+
 // Returns the model's text, or a ready error response.
 export async function completeChat(messages: unknown[], maxTokens: number): Promise<{ text: string; model: string } | Response> {
   const base = (Deno.env.get("MNAKA_LLM_BASE_URL") ?? "").replace(/\/+$/, "");

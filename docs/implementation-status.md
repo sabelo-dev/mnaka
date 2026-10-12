@@ -472,3 +472,20 @@ saving on Android are all unproven. Voice input is not available in this build; 
 exists only in the browser. The package is debug-signed and unoptimised: it can be
 side-loaded, not published to a store, and an update must be signed with the same
 debug key from this machine.
+
+## Settings in plain language, model check, greeting overflow
+
+Settings now has a Services list (one row per feature with ON, NEEDS MODEL, SIGN IN or
+UNAVAILABLE and a sentence saying what it does) and a Privacy list, replacing the
+engine registry dump and the storage/broker wording. The registry itself is unchanged.
+
+The client used to say "Connected" as soon as sign-in succeeded, even with no model
+configured. The `assistant` function now answers `{"probe": true}` with whether its
+model secrets are set, without calling the model; the client asks once after sign-in
+and shows "Model not set up" in the header, banner, orb card and Settings. A probe
+that fails leaves the status unknown and the old wording in place.
+
+A long account name made the Overview greeting wider than its column, pushing "Clear
+session" and the composer over the centre column. The greeting now shrinks and elides,
+and its caret is part of the text. Checked in headless Chrome signed in as a long
+address against a stand-in backend with no model configured; twelve targets pass.

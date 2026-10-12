@@ -79,6 +79,25 @@ ApplicationWindow {
         const view = scroll.contentItem
         if (bottom > view.contentY + scroll.height) view.contentY = Math.min(bottom - scroll.height, Math.max(0, scroll.contentHeight - scroll.height))
     }
+    // What each part of MNAKA can do right now, in plain words, for the Settings screen.
+    function serviceRows() {
+        const signedIn = workspace.connected
+        const noModel = workspace.modelStatus === "missing"
+        const account = (on, off) => signedIn ? { label: "ON", tone: "on", text: on } : { label: "SIGN IN", tone: "off", text: off }
+        const model = (on, off) => !signedIn ? { label: "SIGN IN", tone: "off", text: off } : noModel ? { label: "NEEDS MODEL", tone: "warn", text: "No model is set up on your account gateway yet." } : { label: "ON", tone: "on", text: on }
+        const row = (name, state) => ({ name: name, label: state.label, tone: state.tone, text: state.text })
+        return [
+            row("Assistant", model("Answers through your own model.", "Sign in to talk to your own model.")),
+            row("Memory", account("Facts you save are sent to your model with every message.", "Sign in to save facts for your model.")),
+            row("Vision", model("Interprets an image you choose, through your model.", "Image preview works now; sign in to interpret images.")),
+            row("Developer workspace", model("Proposes changes to files you add. It cannot build or test.", "You can add files now; sign in to ask for changes.")),
+            row("Skills", account("Saves manifests that pass inspection. Nothing runs them yet.", "Inspection works now; sign in to save manifests.")),
+            row("Proactive rules", account("Saves your rules. Nothing schedules or runs them yet.", "Sign in to save rules.")),
+            row("Voice input", workspace.voice.available ? { label: "ON", tone: "on", text: "Press the microphone and speak. Recognised by this browser." }
+                : { label: "UNAVAILABLE", tone: "off", text: "Needs the web version in Chrome, Edge or Safari." }),
+            row("Computer control", { label: "UNAVAILABLE", tone: "off", text: "Needs a paired desktop app, which is not built yet." })
+        ]
+    }
     function capabilityFor(id) {
         const list = workspace.capabilities
         for (let i = 0; i < list.length; ++i) if (list[i].id === id) return list[i]
@@ -365,7 +384,7 @@ ApplicationWindow {
                         ColumnLayout {
                             spacing: 1; Layout.fillWidth: true
                             Label { text: window.signedIn ? window.accountName : "Not signed in"; color: window.ink; font.pixelSize: 13; elide: Text.ElideRight; Layout.fillWidth: true }
-                            Caption { text: workspace.connected ? "Connected" : workspace.mockSession ? "Mock session" : "Signed out"; font.pixelSize: 11; elide: Text.ElideRight; wrapMode: Text.NoWrap; Layout.fillWidth: true }
+                            Caption { text: workspace.connected ? (workspace.modelStatus === "missing" ? "Model not set up" : "Connected") : workspace.mockSession ? "Mock session" : "Signed out"; font.pixelSize: 11; elide: Text.ElideRight; wrapMode: Text.NoWrap; Layout.fillWidth: true }
                         }
                         Icon { path: window.icons.chevron; size: 14 }
                     }
@@ -389,8 +408,8 @@ ApplicationWindow {
                     Item { visible: window.compact; Layout.fillWidth: true }
                     RowLayout {
                         visible: !window.compact; spacing: 8
-                        Rectangle { implicitWidth: 8; implicitHeight: 8; radius: 4; color: workspace.connected ? "#22c55e" : workspace.mockSession ? "#f5b544" : "#2f5a44" }
-                        Caption { text: workspace.connected ? "Connected" : workspace.mockSession ? "Mock session" : "Not connected" }
+                        Rectangle { implicitWidth: 8; implicitHeight: 8; radius: 4; color: workspace.connected ? (workspace.modelStatus === "missing" ? "#f5b544" : "#22c55e") : workspace.mockSession ? "#f5b544" : "#2f5a44" }
+                        Caption { text: workspace.connected ? (workspace.modelStatus === "missing" ? "Model not set up" : "Connected") : workspace.mockSession ? "Mock session" : "Not connected" }
                     }
                     Pill { visible: !window.compact; text: "●  " + workspace.state; tint: workspace.busy ? "#ffb000" : window.cyan }
                     ComboBox { id: mode; model: ["Assistant", "Developer", "Autonomous"]; Layout.preferredWidth: 170; Accessible.name: "Workflow mode" }
@@ -415,7 +434,7 @@ ApplicationWindow {
                         Layout.fillWidth: true; Layout.leftMargin: content.gutter; Layout.rightMargin: content.gutter
                         implicitHeight: statusText.implicitHeight + 24
                         color: "#071209"; border.color: "#1f5a3c"
-                        Caption { id: statusText; anchors.fill: parent; anchors.margins: 12; color: "#9be7b8"; text: workspace.connected ? "Connected. Messages go to your own model through your account gateway. Conversations, memories, skills and rules are saved to your account as plain text." : workspace.mockSession ? "MOCK SESSION. Replies come from a deterministic fixture, not a reasoning model. Tasks run through the broker's fixture tools only: no files, applications or networks are touched, and nothing is saved when you close MNAKA." : (workspace.accountConfigured ? "Signed out. Sign in under Settings to use the assistant. Nothing is sent or saved while you are signed out." : "No account service is configured for this build, so the assistant is unavailable.") }
+                        Caption { id: statusText; anchors.fill: parent; anchors.margins: 12; color: workspace.connected && workspace.modelStatus === "missing" ? "#f5d28a" : "#9be7b8"; text: workspace.connected && workspace.modelStatus === "missing" ? "Signed in, but no model is set up yet, so the assistant cannot answer. Set MNAKA_LLM_BASE_URL and MNAKA_LLM_MODEL as secrets on your Supabase project. Memory, skills and rules still save to your account." : workspace.connected ? "Connected. Messages go to your own model through your account gateway. Conversations, memories, skills and rules are saved to your account as plain text." : workspace.mockSession ? "MOCK SESSION. Replies come from a deterministic fixture, not a reasoning model. Tasks run through the broker's fixture tools only: no files, applications or networks are touched, and nothing is saved when you close MNAKA." : (workspace.accountConfigured ? "Signed out. Sign in under Settings to use the assistant. Nothing is sent or saved while you are signed out." : "No account service is configured for this build, so the assistant is unavailable.") }
                     }
                     GridLayout {
                         visible: window.page === 0
@@ -431,16 +450,13 @@ ApplicationWindow {
                                 RowLayout {
                                     Layout.fillWidth: true
                                     ColumnLayout {
-                                        spacing: 2; Layout.fillWidth: true
-                                        RowLayout {
-                                            spacing: 6; Layout.fillWidth: true
-                                            Heading { text: window.greeting + (window.signedIn ? ", " + window.accountName : ""); elide: Text.ElideRight; wrapMode: Text.NoWrap; Layout.maximumWidth: parent.width - 20 }
-                                            Rectangle {
-                                                id: caret
-                                                implicitWidth: 10; implicitHeight: 20; color: window.cyan
-                                                Timer { interval: 550; running: window.page === 0; repeat: true; onTriggered: caret.opacity = caret.opacity > 0.5 ? 0 : 1 }
-                                            }
-                                            Item { Layout.fillWidth: true }
+                                        spacing: 2; Layout.fillWidth: true; Layout.minimumWidth: 0
+                                        Heading {
+                                            id: greetingLine
+                                            property bool caretOn: true
+                                            text: window.greeting + (window.signedIn ? ", " + window.accountName : "") + (caretOn ? " █" : "")
+                                            elide: Text.ElideRight; wrapMode: Text.NoWrap; Layout.fillWidth: true
+                                            Timer { interval: 550; running: window.page === 0; repeat: true; onTriggered: greetingLine.caretOn = !greetingLine.caretOn }
                                         }
                                         Caption { text: "$ awaiting input"; font.pixelSize: 14 }
                                     }
@@ -533,7 +549,7 @@ ApplicationWindow {
                                     id: orbColumn
                                     anchors.centerIn: parent; width: parent.width - 40; spacing: 6
                                     Orb { Layout.alignment: Qt.AlignHCenter; active: workspace.busy || workspace.voice.listening; size: window.compact ? 170 : 230 }
-                                    Label { Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 6; text: workspace.voice.listening ? "Listening…" : workspace.busy ? workspace.state : workspace.connected ? (workspace.voice.available ? "Ready to listen" : "Ready") : workspace.mockSession ? "Mock session ready" : "Not connected"; color: workspace.voice.listening ? "#ffb000" : window.ink; font.pixelSize: 19; font.weight: Font.DemiBold }
+                                    Label { Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 6; text: workspace.voice.listening ? "Listening…" : workspace.busy ? workspace.state : workspace.connected ? (workspace.modelStatus === "missing" ? "Model not set up" : workspace.voice.available ? "Ready to listen" : "Ready") : workspace.mockSession ? "Mock session ready" : "Not connected"; color: workspace.voice.listening ? "#ffb000" : window.ink; font.pixelSize: 19; font.weight: Font.DemiBold }
                                     Caption {
                                         Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter
                                         color: workspace.voice.listening && workspace.voice.partial.length > 0 ? window.ink : window.muted
@@ -1132,21 +1148,54 @@ ApplicationWindow {
                         visible: window.page === 8; Layout.fillWidth: true; Layout.leftMargin: content.gutter; Layout.rightMargin: content.gutter
                         implicitHeight: settingsContent.implicitHeight + 48
                         ColumnLayout {
-                            id: settingsContent; anchors.fill: parent; anchors.margins: 24; spacing: 16
-                            Heading { text: "Private by default" }
-                            Caption { text: "Camera and location capture are unavailable. The microphone is used only while you press the microphone button. Selected images stay on this device unless you choose to interpret one. Preferences are session-only. Provider credentials and database connection details are never exposed to QML."; Layout.fillWidth: true }
-                            Label { text: workspace.connected ? "Model provider: your own model, through the account gateway" : workspace.mockSession ? "Model provider: MockModelProvider (deterministic fixture)" : "Model provider: not connected"; color: window.cyan; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                            Caption { text: "Cloud transmission: " + (workspace.connected ? "messages, saved data and images you choose to interpret" : workspace.accountConfigured ? "account sign-in only" : "disabled") + "\nMicrophone: " + (workspace.voice.available ? "only while you press the microphone, through this browser's speech recognition" : "unavailable in this build") + "\nWake word detection: unavailable\nCamera / gesture detection: unavailable\nPostgreSQL: " + (Qt.platform.os === "wasm" ? "not part of the browser build" : "desktop adapter built; UI persistence not connected") + "\nBroker: " + (workspace.connected ? "conversation steps only; no OS access" : workspace.mockSession ? "fixture tools only (demo.echo, demo.review); no OS access" : "execution disabled") + "\nRelay and mobile pairing: unavailable\nModes affect workflows, never permissions."; Layout.fillWidth: true }
-                            Label { text: "ENGINE REGISTRY"; color: window.muted; font.pixelSize: 11; font.letterSpacing: 2 }
+                            id: settingsContent; anchors.fill: parent; anchors.margins: 24; spacing: 10
+                            SectionTitle { text: "Services"; Layout.fillWidth: true; Layout.bottomMargin: 6 }
                             Repeater {
-                                model: workspace.capabilities
-                                Caption {
+                                model: window.serviceRows()
+                                Rectangle {
+                                    id: service
                                     required property var modelData
-                                    Layout.fillWidth: true
-                                    text: modelData.id + " · " + (modelData.enabled ? "engine enabled" : modelData.available ? "account feature" : "unavailable") + " · " + modelData.status
+                                    readonly property color tone: modelData.tone === "on" ? "#22c55e" : modelData.tone === "warn" ? "#f5b544" : "#2f5a44"
+                                    Layout.fillWidth: true; radius: 2; color: "#020a06"; border.color: window.line
+                                    implicitHeight: serviceRow.implicitHeight + 20
+                                    RowLayout {
+                                        id: serviceRow
+                                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; anchors.margins: 14; spacing: 14
+                                        Rectangle { implicitWidth: 8; implicitHeight: 8; radius: 4; color: service.tone }
+                                        ColumnLayout {
+                                            spacing: 2; Layout.fillWidth: true
+                                            Label { text: service.modelData.name; color: window.ink; font.pixelSize: 14; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.fillWidth: true }
+                                            Caption { text: service.modelData.text; Layout.fillWidth: true }
+                                        }
+                                        Pill { text: service.modelData.label; tint: service.modelData.tone === "off" ? window.muted : service.tone }
+                                    }
                                 }
                             }
-                            GhostButton { text: "Delete session history"; onClicked: clearDialog.open() }
+                        }
+                    }
+                    Card {
+                        visible: window.page === 8; Layout.fillWidth: true; Layout.leftMargin: content.gutter; Layout.rightMargin: content.gutter
+                        implicitHeight: privacyContent.implicitHeight + 48
+                        ColumnLayout {
+                            id: privacyContent; anchors.fill: parent; anchors.margins: 24; spacing: 10
+                            SectionTitle { text: "Privacy"; Layout.fillWidth: true; Layout.bottomMargin: 6 }
+                            Repeater {
+                                model: [
+                                    "Your conversations, memories, skills and rules are saved in your account as plain text, and only while you are signed in.",
+                                    "Messages, and the files you add in the Developer workspace, are sent to your own model when you ask for something.",
+                                    "An image leaves this device only when you choose Interpret. It is not stored.",
+                                    "The microphone is used only while you press the microphone button. Camera and location are never used.",
+                                    "Your sign-in lasts until you close MNAKA. It is not kept on this device."
+                                ]
+                                RowLayout {
+                                    id: fact
+                                    required property string modelData
+                                    Layout.fillWidth: true; spacing: 10
+                                    Label { text: ">"; color: window.cyan; Layout.alignment: Qt.AlignTop }
+                                    Caption { text: fact.modelData; font.pixelSize: 14; Layout.fillWidth: true }
+                                }
+                            }
+                            GhostButton { text: workspace.connected ? "Delete saved conversation" : "Clear this session"; Layout.topMargin: 8; onClicked: clearDialog.open() }
                         }
                     }
                     Card {
